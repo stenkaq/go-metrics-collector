@@ -2,6 +2,7 @@ package repository
 
 import (
 	models "go-metrics-collector/internal/model"
+	"sync"
 )
 
 type MetricsRepository interface {
@@ -14,6 +15,7 @@ type metricsRepository struct {
 }
 
 type memStorage struct {
+	mu      sync.RWMutex
 	metrics map[string]models.Metrics
 }
 
@@ -26,10 +28,16 @@ func NewMetricsRepository() MetricsRepository {
 }
 
 func (s *metricsRepository) Save(key string, params models.Metrics) {
+	s.memStorage.mu.Lock()
+	defer s.memStorage.mu.Unlock()
+
 	s.memStorage.metrics[key] = params
 }
 
 func (s *metricsRepository) GetByKey(key string) (models.Metrics, bool) {
+	s.memStorage.mu.RLock()
+	defer s.memStorage.mu.RUnlock()
+
 	val, exists := s.memStorage.metrics[key]
 
 	return val, exists
