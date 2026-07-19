@@ -5,6 +5,7 @@ import (
 	"go-metrics-collector/internal/repository"
 	"go-metrics-collector/internal/service"
 	"net/http"
+	"path"
 )
 
 func main() {
@@ -18,5 +19,19 @@ func main() {
 		metricsHandler.UpdateMetric(w, r)
 	}))
 
-	http.ListenAndServe("localhost:8080", mux)
+	muxWithMiddleware := rejectUncleanPath(mux)
+	http.ListenAndServe("localhost:8080", muxWithMiddleware)
+}
+
+func rejectUncleanPath(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cleanPath := path.Clean(r.URL.Path)
+
+		if cleanPath != r.URL.Path && cleanPath+"/" != r.URL.Path {
+			http.Error(w, "Неверный путь", http.StatusNotFound)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
