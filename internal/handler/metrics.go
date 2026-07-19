@@ -21,11 +21,6 @@ func NewMetricsHandler(s service.MetricsService) MetricsHandler {
 }
 
 func (h *metricsHandler) UpdateMetric(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Разрешен только POST метод", 400)
-		return
-	}
-
 	rawPath := r.URL.Path
 	splitPath := strings.Split(rawPath, "/")
 
