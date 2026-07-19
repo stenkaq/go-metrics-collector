@@ -30,7 +30,7 @@ func (h *metricsHandler) UpdateMetric(w http.ResponseWriter, r *http.Request) {
 	splitPath := strings.Split(rawPath, "/")
 
 	if len(splitPath) < 5 {
-		http.Error(w, "Недостаточно параметров", 400)
+		http.Error(w, "Недостаточно параметров", 404)
 		return
 	}
 
