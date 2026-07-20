@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	httpHandler := app.New()
+	httpHandler := app.NewMetricsHandler()
 
 	http.ListenAndServe("localhost:8080", httpHandler)
 }

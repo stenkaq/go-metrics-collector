@@ -8,7 +8,7 @@ import (
 	"net/http"
 )
 
-func New() http.Handler {
+func NewMetricsHandler() http.Handler {
 	metricsRepository := repository.NewMetricsRepository()
 	metricsService := service.NewMetricsService(metricsRepository)
 	metricsHandler := handler.NewMetricsHandler(metricsService)
