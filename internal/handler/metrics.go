@@ -6,6 +6,7 @@ import (
 	"go-metrics-collector/internal/service"
 	"html"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -89,12 +90,19 @@ func (h *metricsHandler) GetMetric(w http.ResponseWriter, mType, name string) {
 func (h *metricsHandler) GetMetrics(w http.ResponseWriter) {
 	metrics := h.service.GetMetrics()
 
+	names := make([]string, 0, len(metrics))
+	for name := range metrics {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	fmt.Fprint(w, "<!doctype html><html><body><ul>")
 
-	for name, metric := range metrics {
+	for _, name := range names {
 		value := ""
+		metric := metrics[name]
 
 		if metric.MType == models.Counter {
 			value = fmt.Sprint(*metric.Delta)
