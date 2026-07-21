@@ -24,6 +24,10 @@ func (r *metricsRepositoryStub) GetByKey(key string) (models.Metrics, bool) {
 	return metric, exists
 }
 
+func (r *metricsRepositoryStub) GetMetrics() map[string]models.Metrics {
+	return r.metrics
+}
+
 func TestMetricsServiceUpdateCounterMetricValue(t *testing.T) {
 	repository := newMetricsRepositoryStub()
 	metricsService := NewMetricsService(repository)

@@ -17,8 +17,8 @@ type Agent interface {
 }
 
 type HTTPAgent struct {
-	HttpClient *resty.Client
-	BaseUrl    string
+	HTTPClient *resty.Client
+	BaseURL    string
 	MValues    MetricsValues
 }
 
@@ -69,9 +69,9 @@ func (h *HTTPAgent) CollectMetrics() {
 }
 
 func (h *HTTPAgent) sendMetric(name string, mType string, value any) {
-	url := fmt.Sprintf("%s/update/%s/%s/%v", h.BaseUrl, mType, name, value)
+	url := fmt.Sprintf("%s/update/%s/%s/%v", h.BaseURL, mType, name, value)
 
-	response, err := h.HttpClient.R().SetHeader("Content-Type", "text/plain").Post(url)
+	response, err := h.HTTPClient.R().SetHeader("Content-Type", "text/plain").Post(url)
 
 	if err != nil || response.StatusCode() != http.StatusOK {
 		fmt.Printf("Ошибка при отправке запроса: %s\n", url)

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"go-metrics-collector/internal/handler"
+	models "go-metrics-collector/internal/model"
 	"go-metrics-collector/internal/service"
 )
 
@@ -25,7 +26,7 @@ type serviceCalls struct {
 	values []serviceCall
 }
 
-func newMetricsServiceStub() (service.MetricsService, *serviceCalls)  {
+func newMetricsServiceStub() (service.MetricsService, *serviceCalls) {
 	calls := &serviceCalls{}
 	return &metricsServiceStub{calls: calls}, calls
 }
@@ -46,10 +47,20 @@ func (s *metricsServiceStub) UpdateGaugeMetricValue(params service.UpdateGaugeMe
 	})
 }
 
+func (s *metricsServiceStub) GetMetric(string, string) (models.Metrics, bool) {
+	return models.Metrics{}, false
+}
+
+func (s *metricsServiceStub) GetMetrics() map[string]models.Metrics {
+	return nil
+}
+
 func TestMetricsHandlerUpdateMetric(t *testing.T) {
 	tests := []struct {
 		name            string
-		path            string
+		metricType      string
+		metricName      string
+		metricValue     string
 		wantStatus      int
 		wantBody        string
 		wantContentType string
@@ -57,7 +68,9 @@ func TestMetricsHandlerUpdateMetric(t *testing.T) {
 	}{
 		{
 			name:            "updates counter",
-			path:            "/update/counter/PollCount/42",
+			metricType:      "counter",
+			metricName:      "PollCount",
+			metricValue:     "42",
 			wantStatus:      http.StatusOK,
 			wantContentType: "text/plain",
 			wantCalls: []serviceCall{{
@@ -68,7 +81,9 @@ func TestMetricsHandlerUpdateMetric(t *testing.T) {
 		},
 		{
 			name:            "updates gauge",
-			path:            "/update/gauge/Alloc/12.5",
+			metricType:      "gauge",
+			metricName:      "Alloc",
+			metricValue:     "12.5",
 			wantStatus:      http.StatusOK,
 			wantContentType: "text/plain",
 			wantCalls: []serviceCall{{
@@ -78,36 +93,36 @@ func TestMetricsHandlerUpdateMetric(t *testing.T) {
 			}},
 		},
 		{
-			name:            "rejects incomplete path",
-			path:            "/update/gauge",
-			wantStatus:      http.StatusNotFound,
-			wantBody:        "Недостаточно параметров\n",
-			wantContentType: "text/plain; charset=utf-8",
-		},
-		{
 			name:            "rejects empty metric name",
-			path:            "/update/gauge//1",
+			metricType:      "gauge",
+			metricValue:     "1",
 			wantStatus:      http.StatusNotFound,
 			wantBody:        "Пустое имя метрики\n",
 			wantContentType: "text/plain; charset=utf-8",
 		},
 		{
 			name:            "rejects unsupported metric type",
-			path:            "/update/timer/RequestTime/1",
+			metricType:      "timer",
+			metricName:      "RequestTime",
+			metricValue:     "1",
 			wantStatus:      http.StatusBadRequest,
 			wantBody:        "Неизвестный тип метрики\n",
 			wantContentType: "text/plain; charset=utf-8",
 		},
 		{
 			name:            "rejects invalid counter value",
-			path:            "/update/counter/PollCount/1.5",
+			metricType:      "counter",
+			metricName:      "PollCount",
+			metricValue:     "1.5",
 			wantStatus:      http.StatusBadRequest,
 			wantBody:        "Неверное значение метрики\n",
 			wantContentType: "text/plain; charset=utf-8",
 		},
 		{
 			name:            "rejects invalid gauge value",
-			path:            "/update/gauge/Alloc/not-a-number",
+			metricType:      "gauge",
+			metricName:      "Alloc",
+			metricValue:     "not-a-number",
 			wantStatus:      http.StatusBadRequest,
 			wantBody:        "Неверное значение метрики\n",
 			wantContentType: "text/plain; charset=utf-8",
@@ -119,9 +134,8 @@ func TestMetricsHandlerUpdateMetric(t *testing.T) {
 			metricsService, calls := newMetricsServiceStub()
 			h := handler.NewMetricsHandler(metricsService)
 
-			request := httptest.NewRequest(http.MethodPost, test.path, nil)
 			recorder := httptest.NewRecorder()
-			h.UpdateMetric(recorder, request)
+			h.UpdateMetric(recorder, test.metricType, test.metricName, test.metricValue)
 
 			response := recorder.Result()
 			defer response.Body.Close()

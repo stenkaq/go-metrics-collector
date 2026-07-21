@@ -12,7 +12,7 @@ func NewAgent() agent.Agent {
 			Counters: make(map[string]int64),
 			Gauges:   make(map[string]float64),
 		},
-		BaseUrl:    "http://localhost:8080",
-		HttpClient: resty.New(),
+		BaseURL:    "http://localhost:8080",
+		HTTPClient: resty.New(),
 	}
 }
