@@ -68,7 +68,10 @@ func (h *HTTPAgent) CollectMetrics() {
 func (h *HTTPAgent) sendMetric(name string, value any) {
 	url := fmt.Sprintf("%s/update/%s/%v", h.BaseUrl, name, value)
 
-	_, err := h.HttpClient.Post(url, "text/plain", nil)
+	response, err := h.HttpClient.Post(url, "text/plain", nil)
+	if response != nil && response.Body != nil {
+		defer response.Body.Close()
+	}
 	if err != nil {
 		fmt.Printf("Ошибка при отправке запроса: %s\n", url)
 		return
@@ -78,6 +81,9 @@ func (h *HTTPAgent) sendMetric(name string, value any) {
 }
 
 func (h *HTTPAgent) SendMetrics() {
+	h.MValues.mu.RLock()
+	defer h.MValues.mu.RUnlock()
+
 	for k, v := range h.MValues.Counters {
 		h.sendMetric(k, v)
 	}
