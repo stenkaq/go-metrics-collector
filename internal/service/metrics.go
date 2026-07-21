@@ -21,6 +21,8 @@ type UpdateCounterMetricValueParams struct {
 type MetricsService interface {
 	UpdateGaugeMetricValue(params UpdateGaugeMetricValueParams)
 	UpdateCounterMetricValue(params UpdateCounterMetricValueParams)
+	GetMetric(mType string, name string) (models.Metrics, bool)
+	GetMetrics() map[string]models.Metrics
 }
 
 type metricsService struct {
@@ -32,8 +34,7 @@ func NewMetricsService(r repository.MetricsRepository) MetricsService {
 }
 
 func (s *metricsService) UpdateGaugeMetricValue(params UpdateGaugeMetricValueParams) {
-	key := s.getCompoundKey(params.Type, params.Name)
-	metrics, exists := s.repository.GetByKey(key)
+	metrics, exists := s.GetMetric(params.Type, params.Name)
 
 	metrics.Value = &params.Value
 
@@ -41,14 +42,13 @@ func (s *metricsService) UpdateGaugeMetricValue(params UpdateGaugeMetricValuePar
 		metrics.MType = models.Gauge
 	}
 
-	s.repository.Save(key, metrics)
+	s.saveMetric(params.Name, metrics)
 
 	fmt.Printf("Сохранена метрика: %s, тип: %s, значение: %v\n", params.Name, metrics.MType, *metrics.Value)
 }
 
 func (s *metricsService) UpdateCounterMetricValue(params UpdateCounterMetricValueParams) {
-	key := s.getCompoundKey(params.Type, params.Name)
-	metrics, exists := s.repository.GetByKey(key)
+	metrics, exists := s.GetMetric(params.Type, params.Name)
 
 	if exists {
 		*metrics.Delta += params.Value
@@ -57,9 +57,27 @@ func (s *metricsService) UpdateCounterMetricValue(params UpdateCounterMetricValu
 		metrics.MType = models.Counter
 	}
 
-	s.repository.Save(key, metrics)
+	s.saveMetric(params.Name, metrics)
 
 	fmt.Printf("Сохранена метрика: %s, тип: %s, дельта: %v\n", params.Name, metrics.MType, *metrics.Delta)
+}
+
+func (s *metricsService) GetMetrics() map[string]models.Metrics {
+	return s.repository.GetMetrics()
+}
+
+func (s *metricsService) GetMetric(mType string, name string) (models.Metrics, bool) {
+	key := s.getCompoundKey(mType, name)
+
+	metrics, exists := s.repository.GetByKey(key)
+
+	return metrics, exists
+}
+
+func (s *metricsService) saveMetric(name string, metrics models.Metrics) {
+	key := s.getCompoundKey(metrics.MType, name)
+
+	s.repository.Save(key, metrics)
 }
 
 func (s *metricsService) getCompoundKey(mType string, name string) string {

@@ -2,7 +2,9 @@ package agent
 
 import (
 	"fmt"
+	models "go-metrics-collector/internal/model"
 	"math/rand/v2"
+	"net/http"
 	"runtime"
 	"sync"
 
@@ -66,12 +68,12 @@ func (h *HTTPAgent) CollectMetrics() {
 	h.MValues.Counters["PollCount"]++
 }
 
-func (h *HTTPAgent) sendMetric(name string, value any) {
-	url := fmt.Sprintf("%s/update/%s/%v", h.BaseUrl, name, value)
+func (h *HTTPAgent) sendMetric(name string, mType string, value any) {
+	url := fmt.Sprintf("%s/update/%s/%s/%v", h.BaseUrl, mType, name, value)
 
 	response, err := h.HttpClient.R().SetHeader("Content-Type", "text/plain").Post(url)
 
-	if err != nil {
+	if err != nil || response.StatusCode() != http.StatusOK {
 		fmt.Printf("Ошибка при отправке запроса: %s\n", url)
 		return
 	}
@@ -83,11 +85,11 @@ func (h *HTTPAgent) SendMetrics() {
 	h.MValues.mu.RLock()
 	defer h.MValues.mu.RUnlock()
 
-	for k, v := range h.MValues.Counters {
-		h.sendMetric(k, v)
+	for name, value := range h.MValues.Counters {
+		h.sendMetric(name, models.Counter, value)
 	}
 
-	for k, v := range h.MValues.Gauges {
-		h.sendMetric(k, v)
+	for name, value := range h.MValues.Gauges {
+		h.sendMetric(name, models.Gauge, value)
 	}
 }

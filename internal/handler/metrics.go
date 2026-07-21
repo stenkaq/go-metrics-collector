@@ -1,15 +1,19 @@
 package handler
 
 import (
+	"fmt"
 	models "go-metrics-collector/internal/model"
 	"go-metrics-collector/internal/service"
+	"html"
 	"net/http"
 	"strconv"
 	"strings"
 )
 
 type MetricsHandler interface {
-	UpdateMetric(w http.ResponseWriter, r *http.Request)
+	UpdateMetric(w http.ResponseWriter, mType, name, value string)
+	GetMetric(w http.ResponseWriter, mType, name string)
+	GetMetrics(w http.ResponseWriter)
 }
 
 type metricsHandler struct {
@@ -20,49 +24,35 @@ func NewMetricsHandler(s service.MetricsService) MetricsHandler {
 	return &metricsHandler{service: s}
 }
 
-func (h *metricsHandler) UpdateMetric(w http.ResponseWriter, r *http.Request) {
-	rawPath := r.URL.Path
-	splitPath := strings.Split(rawPath, "/")
-
-	if len(splitPath) < 5 {
-		http.Error(w, "Недостаточно параметров", 404)
-		return
-	}
-
-	metricsData := map[string]string{
-		"type": splitPath[2],
-		"name": splitPath[3],
-		"val":  splitPath[4],
-	}
-
-	if strings.TrimSpace(metricsData["name"]) == "" {
+func (h *metricsHandler) UpdateMetric(w http.ResponseWriter, mType, name, value string) {
+	if strings.TrimSpace(name) == "" {
 		http.Error(w, "Пустое имя метрики", http.StatusNotFound)
 		return
 	}
 
-	switch metricsData["type"] {
+	switch mType {
 	case models.Counter:
-		parsedVal, err := strconv.ParseInt(metricsData["val"], 10, 64)
+		parsedVal, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
 			http.Error(w, "Неверное значение метрики", http.StatusBadRequest)
 			return
 		}
 
 		h.service.UpdateCounterMetricValue(service.UpdateCounterMetricValueParams{
-			Type:  metricsData["type"],
-			Name:  metricsData["name"],
+			Type:  mType,
+			Name:  name,
 			Value: parsedVal,
 		})
 	case models.Gauge:
-		parsedVal, err := strconv.ParseFloat(metricsData["val"], 64)
+		parsedVal, err := strconv.ParseFloat(value, 64)
 		if err != nil {
 			http.Error(w, "Неверное значение метрики", http.StatusBadRequest)
 			return
 		}
 
 		h.service.UpdateGaugeMetricValue(service.UpdateGaugeMetricValueParams{
-			Type:  metricsData["type"],
-			Name:  metricsData["name"],
+			Type:  mType,
+			Name:  name,
 			Value: parsedVal,
 		})
 	default:
@@ -71,4 +61,54 @@ func (h *metricsHandler) UpdateMetric(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Add("Content-Type", "text/plain")
+}
+
+func (h *metricsHandler) GetMetric(w http.ResponseWriter, mType, name string) {
+	metric, exists := h.service.GetMetric(mType, name)
+
+	if !exists {
+		http.Error(w, "Неизвестная метрика", http.StatusNotFound)
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	fmt.Fprint(w, "<!doctype html><html><body><ul>")
+
+	value := ""
+	if metric.MType == models.Counter {
+		value = fmt.Sprint(*metric.Delta)
+	} else {
+		value = fmt.Sprint(*metric.Value)
+	}
+
+	fmt.Fprintf(w, "%s: %s", html.EscapeString(name), html.EscapeString(value))
+
+	fmt.Fprint(w, "</ul></body></html>")
+}
+
+func (h *metricsHandler) GetMetrics(w http.ResponseWriter) {
+	metrics := h.service.GetMetrics()
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	fmt.Fprint(w, "<!doctype html><html><body><ul>")
+
+	for name, metric := range metrics {
+		value := ""
+
+		if metric.MType == models.Counter {
+			value = fmt.Sprint(*metric.Delta)
+		} else {
+			value = fmt.Sprint(*metric.Value)
+		}
+
+		fmt.Fprintf(
+			w,
+			"<li>%s: %s</li>",
+			html.EscapeString(name),
+			html.EscapeString(value),
+		)
+	}
+
+	fmt.Fprint(w, "</ul></body></html>")
 }

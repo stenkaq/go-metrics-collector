@@ -18,9 +18,16 @@ func New(handlers Handlers) *gin.Engine {
 	router.RedirectTrailingSlash = false
 	router.RedirectFixedPath = false
 
-	router.Use()
-	router.POST("/update/:type/:name/:value", func(c *gin.Context) {
-		handlers.Metrics.UpdateMetric(c.Writer, c.Request)
+	router.Use(rejectUncleanPath())
+
+	router.POST("/update/:type/:name/:value", func(ctx *gin.Context) {
+		handlers.Metrics.UpdateMetric(ctx.Writer, ctx.Param("type"), ctx.Param("name"), ctx.Param("value"))
+	})
+	router.GET("/", func(ctx *gin.Context) {
+		handlers.Metrics.GetMetrics(ctx.Writer)
+	})
+	router.GET("/value/:type/:name", func(ctx *gin.Context) {
+		handlers.Metrics.GetMetric(ctx.Writer, ctx.Param("type"), ctx.Param("name"))
 	})
 
 	return router

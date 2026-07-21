@@ -8,6 +8,7 @@ import (
 type MetricsRepository interface {
 	Save(key string, params models.Metrics)
 	GetByKey(key string) (models.Metrics, bool)
+	GetMetrics() map[string]models.Metrics
 }
 
 type metricsRepository struct {
@@ -41,4 +42,11 @@ func (s *metricsRepository) GetByKey(key string) (models.Metrics, bool) {
 	val, exists := s.memStorage.metrics[key]
 
 	return val, exists
+}
+
+func (s *metricsRepository) GetMetrics() map[string]models.Metrics {
+	s.memStorage.mu.RLock()
+	defer s.memStorage.mu.RUnlock()
+
+	return s.memStorage.metrics
 }
