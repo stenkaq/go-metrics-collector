@@ -3,9 +3,10 @@ package agent
 import (
 	"fmt"
 	"math/rand/v2"
-	"net/http"
 	"runtime"
 	"sync"
+
+	"github.com/go-resty/resty/v2"
 )
 
 type Agent interface {
@@ -14,7 +15,7 @@ type Agent interface {
 }
 
 type HTTPAgent struct {
-	HttpClient http.Client
+	HttpClient *resty.Client
 	BaseUrl    string
 	MValues    MetricsValues
 }
@@ -68,16 +69,14 @@ func (h *HTTPAgent) CollectMetrics() {
 func (h *HTTPAgent) sendMetric(name string, value any) {
 	url := fmt.Sprintf("%s/update/%s/%v", h.BaseUrl, name, value)
 
-	response, err := h.HttpClient.Post(url, "text/plain", nil)
-	if response != nil && response.Body != nil {
-		defer response.Body.Close()
-	}
+	response, err := h.HttpClient.R().SetHeader("Content-Type", "text/plain").Post(url)
+
 	if err != nil {
 		fmt.Printf("Ошибка при отправке запроса: %s\n", url)
 		return
 	}
 
-	fmt.Printf("Успешно отправлена метрика: %s - %v\n", name, value)
+	fmt.Printf("Успешно отправлена метрика: %s - %v, status %s\n", name, value, response.Status())
 }
 
 func (h *HTTPAgent) SendMetrics() {

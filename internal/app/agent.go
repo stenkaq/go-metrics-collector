@@ -2,7 +2,8 @@ package app
 
 import (
 	"go-metrics-collector/internal/agent"
-	"net/http"
+
+	"github.com/go-resty/resty/v2"
 )
 
 func NewAgent() agent.Agent {
@@ -12,6 +13,6 @@ func NewAgent() agent.Agent {
 			Gauges:   make(map[string]float64),
 		},
 		BaseUrl:    "http://localhost:8080",
-		HttpClient: http.Client{},
+		HttpClient: resty.New(),
 	}
 }
