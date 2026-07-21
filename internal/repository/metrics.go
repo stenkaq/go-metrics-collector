@@ -48,5 +48,10 @@ func (s *metricsRepository) GetMetrics() map[string]models.Metrics {
 	s.memStorage.mu.RLock()
 	defer s.memStorage.mu.RUnlock()
 
-	return s.memStorage.metrics
+	metrics := make(map[string]models.Metrics, len(s.memStorage.metrics))
+	for key, metric := range s.memStorage.metrics {
+		metrics[key] = metric
+	}
+
+	return metrics
 }

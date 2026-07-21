@@ -69,11 +69,10 @@ func (h *metricsHandler) GetMetric(w http.ResponseWriter, mType, name string) {
 
 	if !exists {
 		http.Error(w, "Неизвестная метрика", http.StatusNotFound)
+		return
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-	fmt.Fprint(w, "<!doctype html><html><body><ul>")
 
 	value := ""
 	if metric.MType == models.Counter {
@@ -82,9 +81,7 @@ func (h *metricsHandler) GetMetric(w http.ResponseWriter, mType, name string) {
 		value = fmt.Sprint(*metric.Value)
 	}
 
-	fmt.Fprintf(w, "%s: %s", html.EscapeString(name), html.EscapeString(value))
-
-	fmt.Fprint(w, "</ul></body></html>")
+	fmt.Fprintf(w, "%s", html.EscapeString(value))
 }
 
 func (h *metricsHandler) GetMetrics(w http.ResponseWriter) {
