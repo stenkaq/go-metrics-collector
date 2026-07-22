@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	models "go-metrics-collector/internal/model"
+	"log"
 	"math/rand/v2"
 	"net/http"
 	"runtime"
@@ -73,8 +74,13 @@ func (h *HTTPAgent) sendMetric(name string, mType string, value any) {
 
 	response, err := h.HTTPClient.R().SetHeader("Content-Type", "text/plain").Post(url)
 
-	if err != nil || response.StatusCode() != http.StatusOK {
-		fmt.Printf("Ошибка при отправке запроса: %s\n", url)
+	if err != nil {
+		log.Printf("Ошибка запроса %s: %v\n", url, err)
+		return
+	}
+
+	if response.StatusCode() != http.StatusOK {
+		fmt.Printf("Ошибка ответа: %s - status=%s body=%q\n", url, response.Status(), response.String())
 		return
 	}
 

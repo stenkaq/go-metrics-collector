@@ -6,13 +6,13 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
-func NewAgent() agent.Agent {
+func NewAgent(address string) agent.Agent {
 	return &agent.HTTPAgent{
 		MValues: agent.MetricsValues{
 			Counters: make(map[string]int64),
 			Gauges:   make(map[string]float64),
 		},
-		BaseURL:    "http://localhost:8080",
+		BaseURL:    "http://" + address,
 		HTTPClient: resty.New(),
 	}
 }
