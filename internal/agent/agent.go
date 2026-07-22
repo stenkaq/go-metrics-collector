@@ -2,12 +2,13 @@ package agent
 
 import (
 	"fmt"
-	models "go-metrics-collector/internal/model"
 	"log"
 	"math/rand/v2"
 	"net/http"
 	"runtime"
 	"sync"
+
+	models "go-metrics-collector/internal/model"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -30,11 +31,11 @@ type MetricsValues struct {
 }
 
 func (h *HTTPAgent) CollectMetrics() {
-	h.MValues.mu.Lock()
-	defer h.MValues.mu.Unlock()
-
 	var stats runtime.MemStats
 	runtime.ReadMemStats(&stats)
+
+	h.MValues.mu.Lock()
+	defer h.MValues.mu.Unlock()
 
 	h.MValues.Gauges["Alloc"] = float64(stats.Alloc)
 	h.MValues.Gauges["BuckHashSys"] = float64(stats.BuckHashSys)
@@ -69,22 +70,23 @@ func (h *HTTPAgent) CollectMetrics() {
 	h.MValues.Counters["PollCount"]++
 }
 
-func (h *HTTPAgent) sendMetric(name string, mType string, value any) {
+func (h *HTTPAgent) sendMetric(name string, mType string, value any) error {
+	if h.HTTPClient == nil {
+		return fmt.Errorf("HTTP-клиент не настроен")
+	}
+
 	url := fmt.Sprintf("%s/update/%s/%s/%v", h.BaseURL, mType, name, value)
 
 	response, err := h.HTTPClient.R().SetHeader("Content-Type", "text/plain").Post(url)
-
 	if err != nil {
-		log.Printf("Ошибка запроса %s: %v\n", url, err)
-		return
+		return fmt.Errorf("запрос %s: %w", url, err)
 	}
 
 	if response.StatusCode() != http.StatusOK {
-		fmt.Printf("Ошибка ответа: %s - status=%s body=%q\n", url, response.Status(), response.String())
-		return
+		return fmt.Errorf("ответ %s: status=%s body=%q", url, response.Status(), response.String())
 	}
 
-	fmt.Printf("Успешно отправлена метрика: %s - %v, status %s\n", name, value, response.Status())
+	return nil
 }
 
 func (h *HTTPAgent) SendMetrics() {
@@ -93,9 +95,15 @@ func (h *HTTPAgent) SendMetrics() {
 
 	for name, value := range h.MValues.Counters {
 		h.sendMetric(name, models.Counter, value)
+		if err := h.sendMetric(name, models.Gauge, value); err != nil {
+			log.Printf("Ошибка отправки метрики %s: %v", name, err)
+		}
 	}
 
 	for name, value := range h.MValues.Gauges {
 		h.sendMetric(name, models.Gauge, value)
+		if err := h.sendMetric(name, models.Gauge, value); err != nil {
+			log.Printf("Ошибка отправки метрики %s: %v", name, err)
+		}
 	}
 }

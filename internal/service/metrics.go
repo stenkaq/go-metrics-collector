@@ -1,7 +1,8 @@
 package service
 
 import (
-	"fmt"
+	"sync"
+
 	models "go-metrics-collector/internal/model"
 	"go-metrics-collector/internal/repository"
 )
@@ -27,6 +28,7 @@ type MetricsService interface {
 
 type metricsService struct {
 	repository repository.MetricsRepository
+	updateMu   sync.Mutex
 }
 
 func NewMetricsService(r repository.MetricsRepository) MetricsService {
@@ -34,32 +36,36 @@ func NewMetricsService(r repository.MetricsRepository) MetricsService {
 }
 
 func (s *metricsService) UpdateGaugeMetricValue(params UpdateGaugeMetricValueParams) {
-	metrics, exists := s.GetMetric(params.Type, params.Name)
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
 
-	metrics.Value = &params.Value
+	metric, _ := s.GetMetric(models.Gauge, params.Name)
+	value := params.Value
 
-	if !exists {
-		metrics.MType = models.Gauge
-	}
+	metric.ID = params.Name
+	metric.MType = models.Gauge
+	metric.Delta = nil
+	metric.Value = &value
 
-	s.saveMetric(params.Name, metrics)
-
-	fmt.Printf("Сохранена метрика: %s, тип: %s, значение: %v\n", params.Name, metrics.MType, *metrics.Value)
+	s.saveMetric(metric)
 }
 
 func (s *metricsService) UpdateCounterMetricValue(params UpdateCounterMetricValueParams) {
-	metrics, exists := s.GetMetric(params.Type, params.Name)
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
 
-	if exists {
-		*metrics.Delta += params.Value
-	} else {
-		metrics.Delta = &params.Value
-		metrics.MType = models.Counter
+	metric, exists := s.GetMetric(models.Counter, params.Name)
+	delta := params.Value
+	if exists && metric.Delta != nil {
+		delta += *metric.Delta
 	}
 
-	s.saveMetric(params.Name, metrics)
+	metric.ID = params.Name
+	metric.MType = models.Counter
+	metric.Delta = &delta
+	metric.Value = nil
 
-	fmt.Printf("Сохранена метрика: %s, тип: %s, дельта: %v\n", params.Name, metrics.MType, *metrics.Delta)
+	s.saveMetric(metric)
 }
 
 func (s *metricsService) GetMetrics() map[string]models.Metrics {
@@ -74,12 +80,12 @@ func (s *metricsService) GetMetric(mType string, name string) (models.Metrics, b
 	return metrics, exists
 }
 
-func (s *metricsService) saveMetric(name string, metrics models.Metrics) {
-	key := s.getCompoundKey(metrics.MType, name)
+func (s *metricsService) saveMetric(metric models.Metrics) {
+	key := s.getCompoundKey(metric.MType, metric.ID)
 
-	s.repository.Save(key, metrics)
+	s.repository.Save(key, metric)
 }
 
 func (s *metricsService) getCompoundKey(mType string, name string) string {
-	return fmt.Sprintf("%s-%s", mType, name)
+	return mType + "-" + name
 }

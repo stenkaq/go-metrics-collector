@@ -1,9 +1,10 @@
 package router
 
 import (
-	"go-metrics-collector/internal/handler"
 	"net/http"
 	"path"
+
+	"go-metrics-collector/internal/handler"
 
 	"github.com/gin-gonic/gin"
 )
@@ -40,7 +41,7 @@ func rejectUncleanPath() gin.HandlerFunc {
 
 		if cleanPath != rawPath && cleanPath+"/" != rawPath {
 			c.Abort()
-			c.String(http.StatusNotFound, "Неверный тип")
+			c.String(http.StatusNotFound, "Ресурс не найден")
 			return
 		}
 

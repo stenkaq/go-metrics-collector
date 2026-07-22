@@ -23,9 +23,9 @@ func ParseAgentConfig() AgentConfig {
 	flag.Parse()
 
 	return AgentConfig{
-		Address: *address,
+		Address:        *address,
 		ReportInterval: time.Duration(*report) * time.Second,
-		PollInterval: time.Duration(*poll) * time.Second,
+		PollInterval:   time.Duration(*poll) * time.Second,
 	}
 }
 
