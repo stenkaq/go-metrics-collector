@@ -13,8 +13,9 @@ type MetricsRepository interface {
 }
 
 type IncrementCounterParams struct {
-	Name  string
 	Value int64
+	Key   string
+	Name  string
 }
 
 type metricsRepository struct {
@@ -66,7 +67,7 @@ func (s *metricsRepository) IncrementCounter(params IncrementCounterParams) {
 	s.memStorage.mu.Lock()
 	defer s.memStorage.mu.Unlock()
 
-	metric, exists := s.GetByKey(models.Counter)
+	metric, exists := s.memStorage.metrics[params.Key]
 
 	delta := params.Value
 	if exists && metric.Delta != nil {

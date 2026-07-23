@@ -45,9 +45,12 @@ func (s *metricsService) UpdateGaugeMetricValue(params UpdateGaugeMetricValuePar
 }
 
 func (s *metricsService) UpdateCounterMetricValue(params UpdateCounterMetricValueParams) {
+	key := s.getCompoundKey(models.Counter, params.Name)
+
 	s.repository.IncrementCounter(repository.IncrementCounterParams{
 		Value: params.Value,
 		Name:  params.Name,
+		Key: key,
 	})
 }
 
