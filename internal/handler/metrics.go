@@ -61,7 +61,7 @@ func (h *metricsHandler) UpdateMetric(w http.ResponseWriter, mType, name, value 
 		return
 	}
 
-	w.Header().Add("Content-Type", "text/plain")
+	w.Header().Set("Content-Type", "text/plain")
 }
 
 func (h *metricsHandler) GetMetric(w http.ResponseWriter, mType, name string) {
