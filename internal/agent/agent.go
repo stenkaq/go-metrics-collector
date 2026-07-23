@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"log"
+	"maps"
 	"math/rand/v2"
 	"net/http"
 	"runtime"
@@ -91,16 +92,20 @@ func (h *HTTPAgent) sendMetric(name string, mType string, value any) error {
 
 func (h *HTTPAgent) SendMetrics() {
 	h.MValues.mu.RLock()
-	defer h.MValues.mu.RUnlock()
 
-	for name, value := range h.MValues.Counters {
+	gaugeMetrics := maps.Clone(h.MValues.Gauges)
+	counterMetrics := maps.Clone(h.MValues.Counters)
+
+	h.MValues.mu.RUnlock()
+
+	for name, value := range counterMetrics {
 		err := h.sendMetric(name, models.Counter, value)
 		if err != nil {
 			log.Printf("Ошибка отправки метрики %s: %v", name, err)
 		}
 	}
 
-	for name, value := range h.MValues.Gauges {
+	for name, value := range gaugeMetrics {
 		err := h.sendMetric(name, models.Gauge, value)
 		if err != nil {
 			log.Printf("Ошибка отправки метрики %s: %v", name, err)
