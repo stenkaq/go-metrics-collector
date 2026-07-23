@@ -78,5 +78,5 @@ func (s *metricsRepository) IncrementCounter(params IncrementCounterParams) {
 	metric.MType = models.Counter
 	metric.Delta = &delta
 
-	s.Save(models.Counter, metric)
+	s.memStorage.metrics[params.Key] = metric
 }
