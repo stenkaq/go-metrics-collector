@@ -28,6 +28,23 @@ func (r *metricsRepositoryStub) GetMetrics() map[string]models.Metrics {
 	return r.metrics
 }
 
+func (r *metricsRepositoryStub) IncrementCounter(params repository.IncrementCounterParams) {
+	key := models.Counter + "-" + params.Name
+	metric, exists := r.metrics[key]
+
+	delta := params.Value
+	if exists && metric.Delta != nil {
+		delta += *metric.Delta
+	}
+
+	metric.ID = params.Name
+	metric.MType = models.Counter
+	metric.Delta = &delta
+	metric.Value = nil
+
+	r.metrics[key] = metric
+}
+
 func TestMetricsServiceUpdateCounterMetricValue(t *testing.T) {
 	repository := newMetricsRepositoryStub()
 	metricsService := NewMetricsService(repository)

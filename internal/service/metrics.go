@@ -1,8 +1,6 @@
 package service
 
 import (
-	"sync"
-
 	models "go-metrics-collector/internal/model"
 	"go-metrics-collector/internal/repository"
 )
@@ -28,7 +26,6 @@ type MetricsService interface {
 
 type metricsService struct {
 	repository repository.MetricsRepository
-	updateMu   sync.Mutex
 }
 
 func NewMetricsService(r repository.MetricsRepository) MetricsService {
@@ -36,9 +33,6 @@ func NewMetricsService(r repository.MetricsRepository) MetricsService {
 }
 
 func (s *metricsService) UpdateGaugeMetricValue(params UpdateGaugeMetricValueParams) {
-	s.updateMu.Lock()
-	defer s.updateMu.Unlock()
-
 	metric, _ := s.GetMetric(models.Gauge, params.Name)
 	value := params.Value
 
@@ -51,21 +45,10 @@ func (s *metricsService) UpdateGaugeMetricValue(params UpdateGaugeMetricValuePar
 }
 
 func (s *metricsService) UpdateCounterMetricValue(params UpdateCounterMetricValueParams) {
-	s.updateMu.Lock()
-	defer s.updateMu.Unlock()
-
-	metric, exists := s.GetMetric(models.Counter, params.Name)
-	delta := params.Value
-	if exists && metric.Delta != nil {
-		delta += *metric.Delta
-	}
-
-	metric.ID = params.Name
-	metric.MType = models.Counter
-	metric.Delta = &delta
-	metric.Value = nil
-
-	s.saveMetric(metric)
+	s.repository.IncrementCounter(repository.IncrementCounterParams{
+		Value: params.Value,
+		Name:  params.Name,
+	})
 }
 
 func (s *metricsService) GetMetrics() map[string]models.Metrics {

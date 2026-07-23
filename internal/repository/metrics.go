@@ -9,6 +9,12 @@ type MetricsRepository interface {
 	Save(key string, params models.Metrics)
 	GetByKey(key string) (models.Metrics, bool)
 	GetMetrics() map[string]models.Metrics
+	IncrementCounter(params IncrementCounterParams)
+}
+
+type IncrementCounterParams struct {
+	Name  string
+	Value int64
 }
 
 type metricsRepository struct {
@@ -54,4 +60,22 @@ func (s *metricsRepository) GetMetrics() map[string]models.Metrics {
 	}
 
 	return metrics
+}
+
+func (s *metricsRepository) IncrementCounter(params IncrementCounterParams) {
+	s.memStorage.mu.Lock()
+	defer s.memStorage.mu.Unlock()
+
+	metric, exists := s.GetByKey(models.Counter)
+
+	delta := params.Value
+	if exists && metric.Delta != nil {
+		delta += *metric.Delta
+	}
+
+	metric.ID = params.Name
+	metric.MType = models.Counter
+	metric.Delta = &delta
+
+	s.Save(models.Counter, metric)
 }
