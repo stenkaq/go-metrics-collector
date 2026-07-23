@@ -94,15 +94,15 @@ func (h *HTTPAgent) SendMetrics() {
 	defer h.MValues.mu.RUnlock()
 
 	for name, value := range h.MValues.Counters {
-		h.sendMetric(name, models.Counter, value)
-		if err := h.sendMetric(name, models.Gauge, value); err != nil {
+		err := h.sendMetric(name, models.Counter, value)
+		if err != nil {
 			log.Printf("Ошибка отправки метрики %s: %v", name, err)
 		}
 	}
 
 	for name, value := range h.MValues.Gauges {
-		h.sendMetric(name, models.Gauge, value)
-		if err := h.sendMetric(name, models.Gauge, value); err != nil {
+		err := h.sendMetric(name, models.Gauge, value)
+		if err != nil {
 			log.Printf("Ошибка отправки метрики %s: %v", name, err)
 		}
 	}
