@@ -5,21 +5,23 @@ import (
 	"path"
 
 	"go-metrics-collector/internal/handler"
+	"go-metrics-collector/internal/middleware"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type Handlers struct {
 	Metrics handler.MetricsHandler
 }
 
-func New(handlers Handlers) *gin.Engine {
-	router := gin.Default()
+func New(handlers Handlers, logger *zap.Logger) *gin.Engine {
+	router := gin.New()
 
 	router.RedirectTrailingSlash = false
 	router.RedirectFixedPath = false
 
-	router.Use(rejectUncleanPath())
+	router.Use(gin.Recovery(), middleware.LogRequest(logger), middleware.LogResponse(logger), rejectUncleanPath())
 
 	router.POST("/update/:type/:name/:value", func(ctx *gin.Context) {
 		handlers.Metrics.UpdateMetric(ctx.Writer, ctx.Param("type"), ctx.Param("name"), ctx.Param("value"))
