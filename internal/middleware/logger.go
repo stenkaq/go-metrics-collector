@@ -1,28 +1,20 @@
 package middleware
 
 import (
-	"bytes"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
-type bodyLogWriter struct {
-	gin.ResponseWriter
-	body *bytes.Buffer
-}
-
-func (w bodyLogWriter) Write(b []byte) (int, error) {
-	w.body.Write(b)
-	return w.ResponseWriter.Write(b)
-}
-
 func LogResponse(log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		blw := &bodyLogWriter{ResponseWriter: c.Writer, body: bytes.NewBufferString("")}
-		c.Writer = blw
 		c.Next()
+
+		size := c.Writer.Size()
+		if size < 0 {
+			size = 0
+		}
 
 		log.Info("[RESPONSE]", zap.Int("status code", c.Writer.Status()), zap.Int("size", c.Writer.Size()))
 	}
