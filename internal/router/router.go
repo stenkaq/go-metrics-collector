@@ -1,6 +1,8 @@
 package router
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"path"
 
@@ -15,6 +17,13 @@ type Handlers struct {
 	Metrics handler.MetricsHandler
 }
 
+type MetricsUpdateParams struct {
+	ID    string   `json:"id"`              // имя метрики
+	MType string   `json:"type"`            // параметр, принимающий значение gauge или counter
+	Delta *int64   `json:"delta,omitempty"` // значение метрики в случае передачи counter
+	Value *float64 `json:"value,omitempty"` // значение метрики в случае передачи gauge
+}
+
 func New(handlers Handlers, logger *zap.Logger) *gin.Engine {
 	router := gin.New()
 
@@ -23,8 +32,26 @@ func New(handlers Handlers, logger *zap.Logger) *gin.Engine {
 
 	router.Use(gin.Recovery(), middleware.LogRequest(logger), middleware.LogResponse(logger), rejectUncleanPath())
 
-	router.POST("/update/:type/:name/:value", func(ctx *gin.Context) {
-		handlers.Metrics.UpdateMetric(ctx.Writer, ctx.Param("type"), ctx.Param("name"), ctx.Param("value"))
+	router.POST("/update", func(ctx *gin.Context) {
+		bodyBytes, err := io.ReadAll(ctx.Request.Body)
+		if err != nil {
+			http.Error(ctx.Writer, "Ошибка при чтении тела запроса", http.StatusBadRequest)
+			return
+		}
+
+		var body MetricsUpdateParams
+		err = json.Unmarshal(bodyBytes, &body)
+		if err != nil {
+			http.Error(ctx.Writer, "Ошибка при чтении тела запроса", http.StatusBadRequest)
+			return
+		}
+
+		if body.ID == "" || body.MType == "" || (body.Delta == nil && body.Value == nil) || (body.Delta != nil && body.Value != nil) {
+			http.Error(ctx.Writer, "Неверные значения полей в теле запроса", http.StatusBadRequest)
+			return
+		}
+
+		handlers.Metrics.Update(ctx.Writer, handler.MetricsUpdateParams{ID: body.ID, MType: body.MType, Value: *body.Value, Delta: *body.Delta})
 	})
 	router.GET("/", func(ctx *gin.Context) {
 		handlers.Metrics.GetMetrics(ctx.Writer)

@@ -55,22 +55,22 @@ func (s *metricsServiceStub) GetMetrics() map[string]models.Metrics {
 	return nil
 }
 
-func TestMetricsHandlerUpdateMetric(t *testing.T) {
+func TestMetricsHandlerUpdate(t *testing.T) {
 	tests := []struct {
 		name            string
-		metricType      string
-		metricName      string
-		metricValue     string
+		params          handler.MetricsUpdateParams
 		wantStatus      int
 		wantBody        string
 		wantContentType string
 		wantCalls       []serviceCall
 	}{
 		{
-			name:            "updates counter",
-			metricType:      "counter",
-			metricName:      "PollCount",
-			metricValue:     "42",
+			name: "updates counter",
+			params: handler.MetricsUpdateParams{
+				ID:    "PollCount",
+				MType: "counter",
+				Delta: 42,
+			},
 			wantStatus:      http.StatusOK,
 			wantContentType: "text/plain",
 			wantCalls: []serviceCall{{
@@ -80,10 +80,12 @@ func TestMetricsHandlerUpdateMetric(t *testing.T) {
 			}},
 		},
 		{
-			name:            "updates gauge",
-			metricType:      "gauge",
-			metricName:      "Alloc",
-			metricValue:     "12.5",
+			name: "updates gauge",
+			params: handler.MetricsUpdateParams{
+				ID:    "Alloc",
+				MType: "gauge",
+				Value: 12.5,
+			},
 			wantStatus:      http.StatusOK,
 			wantContentType: "text/plain",
 			wantCalls: []serviceCall{{
@@ -93,38 +95,30 @@ func TestMetricsHandlerUpdateMetric(t *testing.T) {
 			}},
 		},
 		{
-			name:            "rejects empty metric name",
-			metricType:      "gauge",
-			metricValue:     "1",
-			wantStatus:      http.StatusNotFound,
-			wantBody:        "Пустое имя метрики\n",
-			wantContentType: "text/plain; charset=utf-8",
+			name: "ignores gauge value for counter",
+			params: handler.MetricsUpdateParams{
+				ID:    "PollCount",
+				MType: "counter",
+				Delta: 7,
+				Value: 12.5,
+			},
+			wantStatus:      http.StatusOK,
+			wantContentType: "text/plain",
+			wantCalls: []serviceCall{{
+				metricType: "counter",
+				name:       "PollCount",
+				counter:    7,
+			}},
 		},
 		{
-			name:            "rejects unsupported metric type",
-			metricType:      "timer",
-			metricName:      "RequestTime",
-			metricValue:     "1",
+			name: "rejects unsupported metric type",
+			params: handler.MetricsUpdateParams{
+				ID:    "RequestTime",
+				MType: "timer",
+				Delta: 1,
+			},
 			wantStatus:      http.StatusBadRequest,
 			wantBody:        "Неизвестный тип метрики\n",
-			wantContentType: "text/plain; charset=utf-8",
-		},
-		{
-			name:            "rejects invalid counter value",
-			metricType:      "counter",
-			metricName:      "PollCount",
-			metricValue:     "1.5",
-			wantStatus:      http.StatusBadRequest,
-			wantBody:        "Неверное значение метрики\n",
-			wantContentType: "text/plain; charset=utf-8",
-		},
-		{
-			name:            "rejects invalid gauge value",
-			metricType:      "gauge",
-			metricName:      "Alloc",
-			metricValue:     "not-a-number",
-			wantStatus:      http.StatusBadRequest,
-			wantBody:        "Неверное значение метрики\n",
 			wantContentType: "text/plain; charset=utf-8",
 		},
 	}
@@ -135,7 +129,7 @@ func TestMetricsHandlerUpdateMetric(t *testing.T) {
 			h := handler.NewMetricsHandler(metricsService)
 
 			recorder := httptest.NewRecorder()
-			h.UpdateMetric(recorder, test.metricType, test.metricName, test.metricValue)
+			h.Update(recorder, test.params)
 
 			response := recorder.Result()
 			defer response.Body.Close()

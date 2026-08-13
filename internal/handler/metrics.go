@@ -7,14 +7,19 @@ import (
 	"html"
 	"net/http"
 	"sort"
-	"strconv"
-	"strings"
 )
 
 type MetricsHandler interface {
-	UpdateMetric(w http.ResponseWriter, mType, name, value string)
+	Update(w http.ResponseWriter, params MetricsUpdateParams)
 	GetMetric(w http.ResponseWriter, mType, name string)
 	GetMetrics(w http.ResponseWriter)
+}
+
+type MetricsUpdateParams struct {
+	ID    string
+	MType string
+	Delta int64
+	Value float64
 }
 
 type metricsHandler struct {
@@ -25,36 +30,19 @@ func NewMetricsHandler(s service.MetricsService) MetricsHandler {
 	return &metricsHandler{service: s}
 }
 
-func (h *metricsHandler) UpdateMetric(w http.ResponseWriter, mType, name, value string) {
-	if strings.TrimSpace(name) == "" {
-		http.Error(w, "Пустое имя метрики", http.StatusNotFound)
-		return
-	}
-
-	switch mType {
+func (h *metricsHandler) Update(w http.ResponseWriter, params MetricsUpdateParams) {
+	switch params.MType {
 	case models.Counter:
-		parsedVal, err := strconv.ParseInt(value, 10, 64)
-		if err != nil {
-			http.Error(w, "Неверное значение метрики", http.StatusBadRequest)
-			return
-		}
-
 		h.service.UpdateCounterMetricValue(service.UpdateCounterMetricValueParams{
-			Type:  mType,
-			Name:  name,
-			Value: parsedVal,
+			Type:  params.MType,
+			Name:  params.ID,
+			Value: params.Delta,
 		})
 	case models.Gauge:
-		parsedVal, err := strconv.ParseFloat(value, 64)
-		if err != nil {
-			http.Error(w, "Неверное значение метрики", http.StatusBadRequest)
-			return
-		}
-
 		h.service.UpdateGaugeMetricValue(service.UpdateGaugeMetricValueParams{
-			Type:  mType,
-			Name:  name,
-			Value: parsedVal,
+			Type:  params.MType,
+			Name:  params.ID,
+			Value: params.Value,
 		})
 	default:
 		http.Error(w, "Неизвестный тип метрики", http.StatusBadRequest)
