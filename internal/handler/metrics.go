@@ -61,7 +61,7 @@ func (h *metricsHandler) UpdateMetricV2(w http.ResponseWriter, params MetricsUpd
 			Value: params.Value,
 		})
 	default:
-		http.Error(w, "Неизвестный тип метрики", http.StatusInternalServerError)
+		http.Error(w, "Неизвестный тип метрики", http.StatusBadRequest)
 		return
 	}
 
