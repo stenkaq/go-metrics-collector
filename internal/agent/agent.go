@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"maps"
@@ -17,6 +18,13 @@ import (
 type Agent interface {
 	CollectMetrics()
 	SendMetrics()
+}
+
+type MetricsUpdateParams struct {
+	ID    string   `json:"id"`              // имя метрики
+	MType string   `json:"type"`            // параметр, принимающий значение gauge или counter
+	Delta *int64   `json:"delta,omitempty"` // значение метрики в случае передачи counter
+	Value *float64 `json:"value,omitempty"` // значение метрики в случае передачи gauge
 }
 
 type HTTPAgent struct {
@@ -76,9 +84,27 @@ func (h *HTTPAgent) sendMetric(name string, mType string, value any) error {
 		return fmt.Errorf("HTTP-клиент не настроен")
 	}
 
-	url := fmt.Sprintf("%s/update/%s/%s/%v", h.BaseURL, mType, name, value)
+	url := fmt.Sprintf("%s/update", h.BaseURL)
+	body := MetricsUpdateParams{
+			MType: mType,
+			ID:    name,
+		}
 
-	response, err := h.HTTPClient.R().SetHeader("Content-Type", "text/plain").Post(url)
+	switch mType {
+	case models.Counter:
+		v := value.(int64)
+		body.Delta = &v
+	case models.Gauge:
+		v := value.(float64)
+		body.Value = &v
+	}
+
+	parsedBody, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("запрос %s: %w", url, err)
+	}
+	response, err := h.HTTPClient.R().SetHeader("Content-Type", "application/json").SetBody(parsedBody).Post(url)
+
 	if err != nil {
 		return fmt.Errorf("запрос %s: %w", url, err)
 	}

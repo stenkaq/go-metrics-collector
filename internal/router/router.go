@@ -51,7 +51,20 @@ func New(handlers Handlers, logger *zap.Logger) *gin.Engine {
 			return
 		}
 
-		handlers.Metrics.Update(ctx.Writer, handler.MetricsUpdateParams{ID: body.ID, MType: body.MType, Value: *body.Value, Delta: *body.Delta})
+		params := handler.MetricsUpdateParams{
+			ID:    body.ID,
+			MType: body.MType,
+		}
+
+		if body.Value != nil {
+			params.Value = *body.Value
+		}
+
+		if body.Delta != nil {
+			params.Delta = *body.Delta
+		}
+
+		handlers.Metrics.Update(ctx.Writer, params)
 	})
 	router.GET("/", func(ctx *gin.Context) {
 		handlers.Metrics.GetMetrics(ctx.Writer)
