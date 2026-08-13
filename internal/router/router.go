@@ -34,7 +34,7 @@ func New(handlers Handlers, logger *zap.Logger) *gin.Engine {
 	router.RedirectTrailingSlash = false
 	router.RedirectFixedPath = false
 
-	router.Use(gin.Recovery(), middleware.LogRequest(logger), middleware.LogResponse(logger), rejectUncleanPath())
+	router.Use(middleware.LogRequest(logger), middleware.LogResponse(logger), middleware.GzipRequest(), middleware.GzipResponse(), gin.Recovery(), rejectUncleanPath())
 
 	router.POST("/update/", func(ctx *gin.Context) {
 		bodyBytes, err := io.ReadAll(ctx.Request.Body)
