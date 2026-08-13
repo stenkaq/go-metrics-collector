@@ -68,10 +68,10 @@ func New(handlers Handlers, logger *zap.Logger) *gin.Engine {
 			params.Delta = *body.Delta
 		}
 
-		handlers.Metrics.Update(ctx.Writer, params)
+		handlers.Metrics.UpdateMetricV2(ctx.Writer, params)
 	})
-	router.GET("/", func(ctx *gin.Context) {
-		handlers.Metrics.GetMetrics(ctx.Writer)
+	router.POST("/update/:type/:name/:value", func(ctx *gin.Context) {
+		handlers.Metrics.UpdateMetric(ctx.Writer, ctx.Param("type"), ctx.Param("name"), ctx.Param("value"))
 	})
 	router.POST("/value", func(ctx *gin.Context) {
 		bodyBytes, err := io.ReadAll(ctx.Request.Body)
@@ -87,8 +87,14 @@ func New(handlers Handlers, logger *zap.Logger) *gin.Engine {
 			return
 		}
 
-		handlers.Metrics.GetMetric(ctx.Writer, handler.MetricsGetParams{ID: body.ID, MType: body.MType})
-		
+		handlers.Metrics.GetMetricV2(ctx.Writer, handler.MetricsGetParams{ID: body.ID, MType: body.MType})
+
+	})
+	router.GET("/", func(ctx *gin.Context) {
+		handlers.Metrics.GetMetrics(ctx.Writer)
+	})
+	router.GET("/value/:type/:name", func(ctx *gin.Context) {
+		handlers.Metrics.GetMetric(ctx.Writer, ctx.Param("type"), ctx.Param("name"))
 	})
 
 	return router

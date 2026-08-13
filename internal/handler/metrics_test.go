@@ -129,7 +129,7 @@ func TestMetricsHandlerUpdate(t *testing.T) {
 			h := handler.NewMetricsHandler(metricsService)
 
 			recorder := httptest.NewRecorder()
-			h.Update(recorder, test.params)
+			h.UpdateMetricV2(recorder, test.params)
 
 			response := recorder.Result()
 			defer response.Body.Close()
