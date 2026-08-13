@@ -6,7 +6,6 @@ import (
 	models "go-metrics-collector/internal/model"
 	"go-metrics-collector/internal/service"
 	"html"
-	"log"
 	"net/http"
 	"sort"
 )
@@ -87,7 +86,7 @@ func (h *metricsHandler) GetMetric(w http.ResponseWriter, params MetricsGetParam
 	}
 
 	body, err := json.Marshal(resp)
-	log.Printf("%+v", string(body))
+
 	if err != nil {
 		http.Error(w, "Ошибка при сериализации ответа", http.StatusInternalServerError)
 		return
