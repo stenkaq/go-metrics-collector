@@ -73,7 +73,7 @@ func New(handlers Handlers, logger *zap.Logger) *gin.Engine {
 	router.POST("/update/:type/:name/:value", func(ctx *gin.Context) {
 		handlers.Metrics.UpdateMetric(ctx.Writer, ctx.Param("type"), ctx.Param("name"), ctx.Param("value"))
 	})
-	router.POST("/value", func(ctx *gin.Context) {
+	router.POST("/value/", func(ctx *gin.Context) {
 		bodyBytes, err := io.ReadAll(ctx.Request.Body)
 		if err != nil {
 			http.Error(ctx.Writer, "Ошибка при чтении тела запроса", http.StatusBadRequest)
