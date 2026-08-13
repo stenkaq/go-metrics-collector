@@ -26,3 +26,6 @@ vendor/
 
 # temp files
 tmp/
+
+# macos
+.DS_Store
