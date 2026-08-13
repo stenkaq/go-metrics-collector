@@ -142,7 +142,7 @@ func TestRouterUpdateJSON(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			engine, metrics := newTestRouter()
 
-			recorder := doRequest(t, engine, http.MethodPost, "/update", test.body)
+			recorder := doRequest(t, engine, http.MethodPost, "/update/", test.body)
 
 			if recorder.Code != test.wantStatus {
 				t.Errorf("status = %d, want %d", recorder.Code, test.wantStatus)

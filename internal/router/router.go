@@ -36,7 +36,7 @@ func New(handlers Handlers, logger *zap.Logger) *gin.Engine {
 
 	router.Use(gin.Recovery(), middleware.LogRequest(logger), middleware.LogResponse(logger), rejectUncleanPath())
 
-	router.POST("/update", func(ctx *gin.Context) {
+	router.POST("/update/", func(ctx *gin.Context) {
 		bodyBytes, err := io.ReadAll(ctx.Request.Body)
 		if err != nil {
 			http.Error(ctx.Writer, "Ошибка при чтении тела запроса", http.StatusBadRequest)

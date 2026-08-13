@@ -84,7 +84,7 @@ func (h *HTTPAgent) sendMetric(name string, mType string, value any) error {
 		return fmt.Errorf("HTTP-клиент не настроен")
 	}
 
-	url := fmt.Sprintf("%s/update", h.BaseURL)
+	url := fmt.Sprintf("%s/update/", h.BaseURL)
 	body := MetricsUpdateParams{
 			MType: mType,
 			ID:    name,
