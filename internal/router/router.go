@@ -23,6 +23,10 @@ type MetricsUpdateParams struct {
 	Delta *int64   `json:"delta,omitempty"` // значение метрики в случае передачи counter
 	Value *float64 `json:"value,omitempty"` // значение метрики в случае передачи gauge
 }
+type MetricsValueParams struct {
+	ID    string `json:"id"`
+	MType string `json:"type"`
+}
 
 func New(handlers Handlers, logger *zap.Logger) *gin.Engine {
 	router := gin.New()
@@ -69,8 +73,22 @@ func New(handlers Handlers, logger *zap.Logger) *gin.Engine {
 	router.GET("/", func(ctx *gin.Context) {
 		handlers.Metrics.GetMetrics(ctx.Writer)
 	})
-	router.GET("/value/:type/:name", func(ctx *gin.Context) {
-		handlers.Metrics.GetMetric(ctx.Writer, ctx.Param("type"), ctx.Param("name"))
+	router.POST("/value", func(ctx *gin.Context) {
+		bodyBytes, err := io.ReadAll(ctx.Request.Body)
+		if err != nil {
+			http.Error(ctx.Writer, "Ошибка при чтении тела запроса", http.StatusBadRequest)
+			return
+		}
+
+		var body MetricsValueParams
+		err = json.Unmarshal(bodyBytes, &body)
+		if err != nil {
+			http.Error(ctx.Writer, "Ошибка при чтении тела запроса", http.StatusBadRequest)
+			return
+		}
+
+		handlers.Metrics.GetMetric(ctx.Writer, handler.MetricsGetParams{ID: body.ID, MType: body.MType})
+		
 	})
 
 	return router

@@ -1,17 +1,19 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	models "go-metrics-collector/internal/model"
 	"go-metrics-collector/internal/service"
 	"html"
+	"log"
 	"net/http"
 	"sort"
 )
 
 type MetricsHandler interface {
 	Update(w http.ResponseWriter, params MetricsUpdateParams)
-	GetMetric(w http.ResponseWriter, mType, name string)
+	GetMetric(w http.ResponseWriter, params MetricsGetParams)
 	GetMetrics(w http.ResponseWriter)
 }
 
@@ -22,6 +24,17 @@ type MetricsUpdateParams struct {
 	Value float64
 }
 
+type MetricsGetParams struct {
+	ID    string
+	MType string
+}
+
+type MetricsGetResponse struct {
+	ID    string   `json:"id"`
+	MType string   `json:"type"`
+	Delta *int64   `json:"delta,omitempty"`
+	Value *float64 `json:"value,omitempty"`
+}
 type metricsHandler struct {
 	service service.MetricsService
 }
@@ -45,31 +58,42 @@ func (h *metricsHandler) Update(w http.ResponseWriter, params MetricsUpdateParam
 			Value: params.Value,
 		})
 	default:
-		http.Error(w, "Неизвестный тип метрики", http.StatusBadRequest)
+		http.Error(w, "Неизвестный тип метрики", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/plain")
 }
 
-func (h *metricsHandler) GetMetric(w http.ResponseWriter, mType, name string) {
-	metric, exists := h.service.GetMetric(mType, name)
+func (h *metricsHandler) GetMetric(w http.ResponseWriter, params MetricsGetParams) {
+	metric, exists := h.service.GetMetric(params.MType, params.ID)
 
 	if !exists {
 		http.Error(w, "Неизвестная метрика", http.StatusNotFound)
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
-	value := ""
-	if metric.MType == models.Counter {
-		value = fmt.Sprint(*metric.Delta)
-	} else {
-		value = fmt.Sprint(*metric.Value)
+	resp := MetricsGetResponse{
+		MType: params.MType,
+		ID:    params.ID,
 	}
 
-	fmt.Fprintf(w, "%s", html.EscapeString(value))
+	if metric.MType == models.Counter {
+		resp.Delta = metric.Delta
+	} else {
+		resp.Value = metric.Value
+	}
+
+	body, err := json.Marshal(resp)
+	log.Printf("%+v", string(body))
+	if err != nil {
+		http.Error(w, "Ошибка при сериализации ответа", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(body)
 }
 
 func (h *metricsHandler) GetMetrics(w http.ResponseWriter) {
