@@ -149,22 +149,20 @@ func (h *metricsHandler) GetMetric(c *gin.Context) {
 func (h *metricsHandler) GetMetrics(c *gin.Context) {
 	metrics := h.service.GetMetrics()
 
-	names := make([]string, 0, len(metrics))
-	for name := range metrics {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	sort.Slice(metrics, func(i, j int) bool {
+		return metrics[i].ID < metrics[j].ID
+	})
 
 	c.Header("Content-Type", "text/html; charset=utf-8")
 
 	fmt.Fprint(c.Writer, "<!doctype html><html><body><ul>")
 
-	for _, name := range names {
+	for _, metric := range metrics {
 		fmt.Fprintf(
 			c.Writer,
 			"<li>%s: %s</li>",
-			html.EscapeString(name),
-			html.EscapeString(formatValue(metrics[name])),
+			html.EscapeString(metric.ID),
+			html.EscapeString(formatValue(metric)),
 		)
 	}
 

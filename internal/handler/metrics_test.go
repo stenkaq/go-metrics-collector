@@ -33,7 +33,7 @@ type metricsServiceStub struct {
 
 	metric  models.Metrics
 	exists  bool
-	metrics map[string]models.Metrics
+	metrics []models.Metrics
 }
 
 type serviceCalls struct {
@@ -67,7 +67,7 @@ func (s *metricsServiceStub) GetMetric(mType, name string) (models.Metrics, bool
 	return s.metric, s.exists
 }
 
-func (s *metricsServiceStub) GetMetrics() map[string]models.Metrics {
+func (s *metricsServiceStub) GetMetrics() []models.Metrics {
 	return s.metrics
 }
 
@@ -503,25 +503,25 @@ func TestMetricsHandlerGetMetricV2RejectsBrokenBody(t *testing.T) {
 func TestMetricsHandlerGetMetrics(t *testing.T) {
 	tests := []struct {
 		name     string
-		metrics  map[string]models.Metrics
+		metrics  []models.Metrics
 		wantBody string
 	}{
 		{
 			name:     "renders empty list",
-			metrics:  map[string]models.Metrics{},
+			metrics:  []models.Metrics{},
 			wantBody: "<!doctype html><html><body><ul></ul></body></html>",
 		},
 		{
-			name: "renders metrics sorted by key",
-			metrics: map[string]models.Metrics{
-				"gauge-Alloc":         gaugeMetric("Alloc", 12.5),
-				"counter-PollCount":   counterMetric("PollCount", 42),
-				"gauge-<script>alert": gaugeMetric("<script>alert", 1),
+			name: "renders metric names sorted, without storage keys",
+			metrics: []models.Metrics{
+				gaugeMetric("Alloc", 12.5),
+				counterMetric("PollCount", 42),
+				gaugeMetric("<script>alert", 1),
 			},
 			wantBody: "<!doctype html><html><body><ul>" +
-				"<li>counter-PollCount: 42</li>" +
-				"<li>gauge-&lt;script&gt;alert: 1</li>" +
-				"<li>gauge-Alloc: 12.5</li>" +
+				"<li>&lt;script&gt;alert: 1</li>" +
+				"<li>Alloc: 12.5</li>" +
+				"<li>PollCount: 42</li>" +
 				"</ul></body></html>",
 		},
 	}

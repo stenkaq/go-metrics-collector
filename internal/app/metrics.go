@@ -7,7 +7,6 @@ import (
 	"go-metrics-collector/internal/config"
 	"go-metrics-collector/internal/handler"
 	"go-metrics-collector/internal/middleware"
-	models "go-metrics-collector/internal/model"
 	"go-metrics-collector/internal/repository"
 	"go-metrics-collector/internal/router"
 	"go-metrics-collector/internal/service"
@@ -90,14 +89,7 @@ func (a *App) runMetricsDump() {
 }
 
 func dumpMetrics(metricsService service.MetricsService, fileStorage *storage.FileStorage) error {
-	metrics := metricsService.GetMetrics()
-
-	list := make([]models.Metrics, 0, len(metrics))
-	for _, metric := range metrics {
-		list = append(list, metric)
-	}
-
-	return fileStorage.Dump(list)
+	return fileStorage.Dump(metricsService.GetMetrics())
 }
 
 func restoreMetrics(

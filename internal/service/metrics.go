@@ -21,7 +21,7 @@ type MetricsService interface {
 	UpdateGaugeMetricValue(params UpdateGaugeMetricValueParams)
 	UpdateCounterMetricValue(params UpdateCounterMetricValueParams)
 	GetMetric(mType string, name string) (models.Metrics, bool)
-	GetMetrics() map[string]models.Metrics
+	GetMetrics() []models.Metrics
 	Restore(metrics []models.Metrics)
 }
 
@@ -34,51 +34,29 @@ func NewMetricsService(r repository.MetricsRepository) MetricsService {
 }
 
 func (s *metricsService) UpdateGaugeMetricValue(params UpdateGaugeMetricValueParams) {
-	metric, _ := s.GetMetric(models.Gauge, params.Name)
 	value := params.Value
 
-	metric.ID = params.Name
-	metric.MType = models.Gauge
-	metric.Delta = nil
-	metric.Value = &value
-
-	s.saveMetric(metric)
-}
-
-func (s *metricsService) UpdateCounterMetricValue(params UpdateCounterMetricValueParams) {
-	key := s.getCompoundKey(models.Counter, params.Name)
-
-	s.repository.IncrementCounter(repository.IncrementCounterParams{
-		Value: params.Value,
-		Name:  params.Name,
-		Key:   key,
+	s.repository.Save(models.Metrics{
+		ID:    params.Name,
+		MType: models.Gauge,
+		Value: &value,
 	})
 }
 
-func (s *metricsService) GetMetrics() map[string]models.Metrics {
+func (s *metricsService) UpdateCounterMetricValue(params UpdateCounterMetricValueParams) {
+	s.repository.IncrementCounter(params.Name, params.Value)
+}
+
+func (s *metricsService) GetMetrics() []models.Metrics {
 	return s.repository.GetMetrics()
 }
 
 func (s *metricsService) GetMetric(mType string, name string) (models.Metrics, bool) {
-	key := s.getCompoundKey(mType, name)
-
-	metrics, exists := s.repository.GetByKey(key)
-
-	return metrics, exists
+	return s.repository.Get(mType, name)
 }
 
 func (s *metricsService) Restore(metrics []models.Metrics) {
-	for _, v := range metrics {
-		s.saveMetric(v)
+	for _, metric := range metrics {
+		s.repository.Save(metric)
 	}
-}
-
-func (s *metricsService) saveMetric(metric models.Metrics) {
-	key := s.getCompoundKey(metric.MType, metric.ID)
-
-	s.repository.Save(key, metric)
-}
-
-func (s *metricsService) getCompoundKey(mType string, name string) string {
-	return mType + "-" + name
 }
