@@ -62,6 +62,8 @@ func (s *metricsServiceStub) GetMetrics() map[string]models.Metrics {
 	return s.metrics
 }
 
+func (s *metricsServiceStub) Restore(metrics []models.Metrics) {}
+
 func counterMetric(name string, delta int64) models.Metrics {
 	return models.Metrics{ID: name, MType: models.Counter, Delta: &delta}
 }

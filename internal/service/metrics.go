@@ -22,6 +22,7 @@ type MetricsService interface {
 	UpdateCounterMetricValue(params UpdateCounterMetricValueParams)
 	GetMetric(mType string, name string) (models.Metrics, bool)
 	GetMetrics() map[string]models.Metrics
+	Restore(metrics []models.Metrics)
 }
 
 type metricsService struct {

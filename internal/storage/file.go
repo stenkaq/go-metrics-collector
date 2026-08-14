@@ -2,11 +2,15 @@ package storage
 
 import (
 	"encoding/json"
+	"errors"
 	models "go-metrics-collector/internal/model"
+	"io"
 	"os"
+	"sync"
 )
 
 type FileStorage struct {
+	mu   sync.Mutex
 	path string
 }
 
@@ -15,6 +19,9 @@ func NewFileStorage(path string) *FileStorage {
 }
 
 func (s *FileStorage) Dump(metrics []models.Metrics) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	producer, err := NewProducer(s.path)
 	if err != nil {
 		return err
@@ -22,6 +29,32 @@ func (s *FileStorage) Dump(metrics []models.Metrics) error {
 	defer producer.Close()
 
 	return producer.WriteMetrics(metrics)
+}
+
+func (s *FileStorage) Load() ([]models.Metrics, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	consumer, err := NewConsumer(s.path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+	defer consumer.Close()
+
+	metrics, err := consumer.ReadMetrics()
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return metrics, nil
 }
 
 type Producer struct {

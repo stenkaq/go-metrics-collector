@@ -6,6 +6,7 @@ import (
 
 	"go-metrics-collector/internal/config"
 	"go-metrics-collector/internal/handler"
+	"go-metrics-collector/internal/middleware"
 	models "go-metrics-collector/internal/model"
 	"go-metrics-collector/internal/repository"
 	"go-metrics-collector/internal/router"
@@ -33,19 +34,36 @@ func NewMetricsApp(cfg config.ServerConfig) (*App, error) {
 	metricsRepository := repository.NewMetricsRepository()
 	metricsService := service.NewMetricsService(metricsRepository)
 	metricsHandler := handler.NewMetricsHandler(metricsService)
+	fileStorage := storage.NewFileStorage(cfg.FileStoragePath)
+
+	storeEnabled := cfg.FileStoragePath != ""
+
+	if storeEnabled && cfg.Restore {
+		restoreMetrics(metricsService, fileStorage, logger)
+	}
+
+	var updateMiddlewares []gin.HandlerFunc
+	if storeEnabled && cfg.StoreInterval == 0 {
+		dump := func() error {
+			return dumpMetrics(metricsService, fileStorage)
+		}
+
+		updateMiddlewares = append(updateMiddlewares, middleware.DumpMetrics(dump, logger))
+	}
 
 	metricsRouter := router.New(
 		router.Handlers{
 			Metrics: metricsHandler,
 		},
 		logger,
+		updateMiddlewares...,
 	)
 
 	return &App{
 		cfg:     cfg,
 		router:  metricsRouter,
 		service: metricsService,
-		storage: storage.NewFileStorage(cfg.FileStoragePath),
+		storage: fileStorage,
 		logger:  logger,
 	}, nil
 }
@@ -65,19 +83,39 @@ func (a *App) runMetricsDump() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		if err := a.metricsDump(); err != nil {
+		if err := dumpMetrics(a.service, a.storage); err != nil {
 			a.logger.Error("не удалось сохранить метрики на диск", zap.Error(err))
 		}
 	}
 }
 
-func (a *App) metricsDump() error {
-	metrics := a.service.GetMetrics()
+func dumpMetrics(metricsService service.MetricsService, fileStorage *storage.FileStorage) error {
+	metrics := metricsService.GetMetrics()
 
 	list := make([]models.Metrics, 0, len(metrics))
 	for _, metric := range metrics {
 		list = append(list, metric)
 	}
 
-	return a.storage.Dump(list)
+	return fileStorage.Dump(list)
+}
+
+func restoreMetrics(
+	metricsService service.MetricsService,
+	fileStorage *storage.FileStorage,
+	logger *zap.Logger,
+) {
+	metrics, err := fileStorage.Load()
+	if err != nil {
+		logger.Warn("не удалось прочитать сохраненные метрики", zap.Error(err))
+		return
+	}
+
+	if len(metrics) == 0 {
+		logger.Info("сохранённых метрик нет")
+		return
+	}
+
+	metricsService.Restore(metrics)
+	logger.Info("метрики восстановлены из файла")
 }

@@ -28,7 +28,7 @@ type MetricsValueParams struct {
 	MType string `json:"type"`
 }
 
-func New(handlers Handlers, logger *zap.Logger) *gin.Engine {
+func New(handlers Handlers, logger *zap.Logger, updateMiddlewares ...gin.HandlerFunc) *gin.Engine {
 	router := gin.New()
 
 	router.RedirectTrailingSlash = false
@@ -36,7 +36,9 @@ func New(handlers Handlers, logger *zap.Logger) *gin.Engine {
 
 	router.Use(middleware.LogRequest(logger), middleware.LogResponse(logger), middleware.GzipRequest(), middleware.GzipResponse(), gin.Recovery(), rejectUncleanPath())
 
-	router.POST("/update/", func(ctx *gin.Context) {
+	updates := router.Group("/update", updateMiddlewares...)
+
+	updates.POST("/", func(ctx *gin.Context) {
 		bodyBytes, err := io.ReadAll(ctx.Request.Body)
 		if err != nil {
 			http.Error(ctx.Writer, "Ошибка при чтении тела запроса", http.StatusBadRequest)
@@ -70,7 +72,7 @@ func New(handlers Handlers, logger *zap.Logger) *gin.Engine {
 
 		handlers.Metrics.UpdateMetricV2(ctx.Writer, params)
 	})
-	router.POST("/update/:type/:name/:value", func(ctx *gin.Context) {
+	updates.POST("/:type/:name/:value", func(ctx *gin.Context) {
 		handlers.Metrics.UpdateMetric(ctx.Writer, ctx.Param("type"), ctx.Param("name"), ctx.Param("value"))
 	})
 	router.POST("/value/", func(ctx *gin.Context) {
