@@ -2,15 +2,24 @@ package handler_test
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"go-metrics-collector/internal/handler"
 	models "go-metrics-collector/internal/model"
 	"go-metrics-collector/internal/service"
+
+	"github.com/gin-gonic/gin"
 )
+
+func TestMain(m *testing.M) {
+	gin.SetMode(gin.TestMode)
+	m.Run()
+}
 
 type serviceCall struct {
 	metricType string
@@ -64,6 +73,12 @@ func (s *metricsServiceStub) GetMetrics() map[string]models.Metrics {
 
 func (s *metricsServiceStub) Restore(metrics []models.Metrics) {}
 
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) {
+	return 0, errors.New("тело недоступно")
+}
+
 func counterMetric(name string, delta int64) models.Metrics {
 	return models.Metrics{ID: name, MType: models.Counter, Delta: &delta}
 }
@@ -72,22 +87,35 @@ func gaugeMetric(name string, value float64) models.Metrics {
 	return models.Metrics{ID: name, MType: models.Gauge, Value: &value}
 }
 
+// newJSONContext собирает контекст с телом запроса, как это сделал бы gin.
+func newJSONContext(recorder *httptest.ResponseRecorder, body io.Reader) *gin.Context {
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", body)
+
+	return c
+}
+
+// newParamsContext собирает контекст с параметрами пути.
+func newParamsContext(recorder *httptest.ResponseRecorder, params gin.Params) *gin.Context {
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	c.Params = params
+
+	return c
+}
+
 func TestMetricsHandlerUpdateV2(t *testing.T) {
 	tests := []struct {
 		name            string
-		params          handler.MetricsUpdateParams
+		body            io.Reader
 		wantStatus      int
 		wantBody        string
 		wantContentType string
 		wantCalls       []serviceCall
 	}{
 		{
-			name: "updates counter",
-			params: handler.MetricsUpdateParams{
-				ID:    "PollCount",
-				MType: "counter",
-				Delta: 42,
-			},
+			name:            "updates counter",
+			body:            strings.NewReader(`{"id":"PollCount","type":"counter","delta":42}`),
 			wantStatus:      http.StatusOK,
 			wantContentType: "text/plain",
 			wantCalls: []serviceCall{{
@@ -97,12 +125,8 @@ func TestMetricsHandlerUpdateV2(t *testing.T) {
 			}},
 		},
 		{
-			name: "updates gauge",
-			params: handler.MetricsUpdateParams{
-				ID:    "Alloc",
-				MType: "gauge",
-				Value: 12.5,
-			},
+			name:            "updates gauge",
+			body:            strings.NewReader(`{"id":"Alloc","type":"gauge","value":12.5}`),
 			wantStatus:      http.StatusOK,
 			wantContentType: "text/plain",
 			wantCalls: []serviceCall{{
@@ -112,37 +136,64 @@ func TestMetricsHandlerUpdateV2(t *testing.T) {
 			}},
 		},
 		{
-			name: "ignores gauge value for counter",
-			params: handler.MetricsUpdateParams{
-				ID:    "PollCount",
-				MType: "counter",
-				Delta: 7,
-				Value: 12.5,
-			},
-			wantStatus:      http.StatusOK,
-			wantContentType: "text/plain",
-			wantCalls: []serviceCall{{
-				metricType: "counter",
-				name:       "PollCount",
-				counter:    7,
-			}},
-		},
-		{
-			name: "rejects unsupported metric type",
-			params: handler.MetricsUpdateParams{
-				ID:    "RequestTime",
-				MType: "timer",
-				Delta: 1,
-			},
+			name:            "rejects a broken body",
+			body:            strings.NewReader(`{"id":`),
 			wantStatus:      http.StatusBadRequest,
-			wantBody:        "Неизвестный тип метрики\n",
+			wantBody:        "Ошибка при чтении тела запроса\n",
 			wantContentType: "text/plain; charset=utf-8",
 		},
 		{
-			name: "rejects empty metric type",
-			params: handler.MetricsUpdateParams{
-				ID: "RequestTime",
-			},
+			name:            "rejects an unreadable body",
+			body:            errReader{},
+			wantStatus:      http.StatusBadRequest,
+			wantBody:        "Ошибка при чтении тела запроса\n",
+			wantContentType: "text/plain; charset=utf-8",
+		},
+		{
+			name:            "rejects a missing id",
+			body:            strings.NewReader(`{"type":"counter","delta":42}`),
+			wantStatus:      http.StatusBadRequest,
+			wantBody:        "Неверные значения полей в теле запроса\n",
+			wantContentType: "text/plain; charset=utf-8",
+		},
+		{
+			name:            "rejects a missing type",
+			body:            strings.NewReader(`{"id":"PollCount","delta":42}`),
+			wantStatus:      http.StatusBadRequest,
+			wantBody:        "Неверные значения полей в теле запроса\n",
+			wantContentType: "text/plain; charset=utf-8",
+		},
+		{
+			name:            "rejects a missing delta for counter",
+			body:            strings.NewReader(`{"id":"PollCount","type":"counter"}`),
+			wantStatus:      http.StatusBadRequest,
+			wantBody:        "Неверные значения полей в теле запроса\n",
+			wantContentType: "text/plain; charset=utf-8",
+		},
+		{
+			name:            "rejects a missing value for gauge",
+			body:            strings.NewReader(`{"id":"Alloc","type":"gauge"}`),
+			wantStatus:      http.StatusBadRequest,
+			wantBody:        "Неверные значения полей в теле запроса\n",
+			wantContentType: "text/plain; charset=utf-8",
+		},
+		{
+			name:            "rejects a gauge value sent for a counter",
+			body:            strings.NewReader(`{"id":"PollCount","type":"counter","value":12.5}`),
+			wantStatus:      http.StatusBadRequest,
+			wantBody:        "Неверные значения полей в теле запроса\n",
+			wantContentType: "text/plain; charset=utf-8",
+		},
+		{
+			name:            "rejects both delta and value",
+			body:            strings.NewReader(`{"id":"PollCount","type":"counter","delta":42,"value":12.5}`),
+			wantStatus:      http.StatusBadRequest,
+			wantBody:        "Неверные значения полей в теле запроса\n",
+			wantContentType: "text/plain; charset=utf-8",
+		},
+		{
+			name:            "rejects unsupported metric type",
+			body:            strings.NewReader(`{"id":"RequestTime","type":"timer","delta":1}`),
 			wantStatus:      http.StatusBadRequest,
 			wantBody:        "Неизвестный тип метрики\n",
 			wantContentType: "text/plain; charset=utf-8",
@@ -155,11 +206,9 @@ func TestMetricsHandlerUpdateV2(t *testing.T) {
 			h := handler.NewMetricsHandler(metricsService)
 
 			recorder := httptest.NewRecorder()
-			h.UpdateMetricV2(recorder, test.params)
+			h.UpdateMetricV2(newJSONContext(recorder, test.body))
 
-			body := checkResponse(t, recorder, test.wantStatus, test.wantBody, test.wantContentType)
-			_ = body
-
+			checkResponse(t, recorder, test.wantStatus, test.wantBody, test.wantContentType)
 			checkCalls(t, calls.values, test.wantCalls)
 		})
 	}
@@ -246,7 +295,11 @@ func TestMetricsHandlerUpdate(t *testing.T) {
 			h := handler.NewMetricsHandler(metricsService)
 
 			recorder := httptest.NewRecorder()
-			h.UpdateMetric(recorder, test.mType, test.metricName, test.value)
+			h.UpdateMetric(newParamsContext(recorder, gin.Params{
+				{Key: "type", Value: test.mType},
+				{Key: "name", Value: test.metricName},
+				{Key: "value", Value: test.value},
+			}))
 
 			checkResponse(t, recorder, test.wantStatus, test.wantBody, test.wantContentType)
 			checkCalls(t, calls.values, test.wantCalls)
@@ -296,7 +349,10 @@ func TestMetricsHandlerGetMetric(t *testing.T) {
 			h := handler.NewMetricsHandler(metricsService)
 
 			recorder := httptest.NewRecorder()
-			h.GetMetric(recorder, "gauge", "Alloc")
+			h.GetMetric(newParamsContext(recorder, gin.Params{
+				{Key: "type", Value: "gauge"},
+				{Key: "name", Value: "Alloc"},
+			}))
 
 			checkResponse(t, recorder, test.wantStatus, test.wantBody, test.wantContentType)
 
@@ -320,7 +376,10 @@ func TestMetricsHandlerGetMetricEscapesValue(t *testing.T) {
 	h := handler.NewMetricsHandler(metricsService)
 
 	recorder := httptest.NewRecorder()
-	h.GetMetric(recorder, "gauge", "Weird")
+	h.GetMetric(newParamsContext(recorder, gin.Params{
+		{Key: "type", Value: "gauge"},
+		{Key: "name", Value: "Weird"},
+	}))
 
 	if body := recorder.Body.String(); body != "1" {
 		t.Errorf("body = %q, want %q", body, "1")
@@ -330,59 +389,55 @@ func TestMetricsHandlerGetMetricEscapesValue(t *testing.T) {
 func TestMetricsHandlerGetMetricV2(t *testing.T) {
 	tests := []struct {
 		name            string
-		params          handler.MetricsGetParams
+		body            io.Reader
 		metric          models.Metrics
 		exists          bool
 		wantStatus      int
 		wantContentType string
-		wantResponse    handler.MetricsGetResponse
+		wantResponse    models.Metrics
 		wantBody        string
+		wantLookup      serviceCall
 	}{
 		{
 			name:            "returns counter",
-			params:          handler.MetricsGetParams{ID: "PollCount", MType: models.Counter},
+			body:            strings.NewReader(`{"id":"PollCount","type":"counter"}`),
 			metric:          counterMetric("PollCount", 42),
 			exists:          true,
 			wantStatus:      http.StatusOK,
 			wantContentType: "application/json; charset=utf-8",
-			wantResponse: handler.MetricsGetResponse{
-				ID:    "PollCount",
-				MType: models.Counter,
-				Delta: ptr[int64](42),
-			},
+			wantResponse:    counterMetric("PollCount", 42),
+			wantLookup:      serviceCall{metricType: models.Counter, name: "PollCount"},
 		},
 		{
 			name:            "returns gauge",
-			params:          handler.MetricsGetParams{ID: "Alloc", MType: models.Gauge},
+			body:            strings.NewReader(`{"id":"Alloc","type":"gauge"}`),
 			metric:          gaugeMetric("Alloc", 12.5),
 			exists:          true,
 			wantStatus:      http.StatusOK,
 			wantContentType: "application/json; charset=utf-8",
-			wantResponse: handler.MetricsGetResponse{
-				ID:    "Alloc",
-				MType: models.Gauge,
-				Value: ptr(12.5),
-			},
+			wantResponse:    gaugeMetric("Alloc", 12.5),
+			wantLookup:      serviceCall{metricType: models.Gauge, name: "Alloc"},
 		},
 		{
 			name:            "returns 404 for unknown metric",
-			params:          handler.MetricsGetParams{ID: "Nope", MType: models.Gauge},
+			body:            strings.NewReader(`{"id":"Nope","type":"gauge"}`),
 			wantStatus:      http.StatusNotFound,
 			wantContentType: "text/plain; charset=utf-8",
 			wantBody:        "Неизвестная метрика\n",
+			wantLookup:      serviceCall{metricType: models.Gauge, name: "Nope"},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			metricsService, _ := newMetricsServiceStub()
+			metricsService, calls := newMetricsServiceStub()
 			metricsService.metric = test.metric
 			metricsService.exists = test.exists
 
 			h := handler.NewMetricsHandler(metricsService)
 
 			recorder := httptest.NewRecorder()
-			h.GetMetricV2(recorder, test.params)
+			h.GetMetricV2(newJSONContext(recorder, test.body))
 
 			response := recorder.Result()
 			defer response.Body.Close()
@@ -399,6 +454,13 @@ func TestMetricsHandlerGetMetricV2(t *testing.T) {
 				t.Errorf("Content-Type = %q, want %q", contentType, test.wantContentType)
 			}
 
+			if len(calls.gets) != 1 {
+				t.Fatalf("service lookups = %d, want 1", len(calls.gets))
+			}
+			if calls.gets[0] != test.wantLookup {
+				t.Errorf("service lookup = %#v, want %#v", calls.gets[0], test.wantLookup)
+			}
+
 			if !test.exists {
 				if string(body) != test.wantBody {
 					t.Errorf("body = %q, want %q", body, test.wantBody)
@@ -406,7 +468,7 @@ func TestMetricsHandlerGetMetricV2(t *testing.T) {
 				return
 			}
 
-			var got handler.MetricsGetResponse
+			var got models.Metrics
 			if err := json.Unmarshal(body, &got); err != nil {
 				t.Fatalf("ошибка при разборе тела %q: %v", body, err)
 			}
@@ -421,6 +483,20 @@ func TestMetricsHandlerGetMetricV2(t *testing.T) {
 				t.Errorf("value = %v, want %v", deref(got.Value), deref(test.wantResponse.Value))
 			}
 		})
+	}
+}
+
+func TestMetricsHandlerGetMetricV2RejectsBrokenBody(t *testing.T) {
+	metricsService, calls := newMetricsServiceStub()
+	h := handler.NewMetricsHandler(metricsService)
+
+	recorder := httptest.NewRecorder()
+	h.GetMetricV2(newJSONContext(recorder, strings.NewReader(`{"id":`)))
+
+	checkResponse(t, recorder, http.StatusBadRequest, "Ошибка при чтении тела запроса\n", "text/plain; charset=utf-8")
+
+	if len(calls.gets) != 0 {
+		t.Errorf("service lookups = %d, want 0", len(calls.gets))
 	}
 }
 
@@ -458,7 +534,7 @@ func TestMetricsHandlerGetMetrics(t *testing.T) {
 			h := handler.NewMetricsHandler(metricsService)
 
 			recorder := httptest.NewRecorder()
-			h.GetMetrics(recorder)
+			h.GetMetrics(newParamsContext(recorder, nil))
 
 			checkResponse(t, recorder, http.StatusOK, test.wantBody, "text/html; charset=utf-8")
 		})
@@ -500,10 +576,6 @@ func checkCalls(t *testing.T, got, want []serviceCall) {
 			t.Errorf("service call %d = %#v, want %#v", i, gotCall, wantCall)
 		}
 	}
-}
-
-func ptr[T any](v T) *T {
-	return &v
 }
 
 func deref[T any](v *T) any {
