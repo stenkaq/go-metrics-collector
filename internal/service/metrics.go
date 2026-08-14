@@ -50,7 +50,7 @@ func (s *metricsService) UpdateCounterMetricValue(params UpdateCounterMetricValu
 	s.repository.IncrementCounter(repository.IncrementCounterParams{
 		Value: params.Value,
 		Name:  params.Name,
-		Key: key,
+		Key:   key,
 	})
 }
 
@@ -64,6 +64,12 @@ func (s *metricsService) GetMetric(mType string, name string) (models.Metrics, b
 	metrics, exists := s.repository.GetByKey(key)
 
 	return metrics, exists
+}
+
+func (s *metricsService) Restore(metrics []models.Metrics) {
+	for _, v := range metrics {
+		s.saveMetric(v)
+	}
 }
 
 func (s *metricsService) saveMetric(metric models.Metrics) {

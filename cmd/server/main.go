@@ -10,9 +10,12 @@ import (
 func main() {
 	cfg := config.ParseServerConfig()
 
-	router := app.NewMetricsRouter()
+	metricsApp, err := app.NewMetricsApp(cfg)
+	if err != nil {
+		log.Fatalf("Ошибка инициализации сервера: %v", err)
+	}
 
-	if err := router.Run(cfg.Address); err != nil {
+	if err := metricsApp.Run(); err != nil {
 		log.Fatalf("Ошибка запуска сервера: %v", err)
 	}
 }

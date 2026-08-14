@@ -6,6 +6,24 @@ import (
 	"os"
 )
 
+type FileStorage struct {
+	path string
+}
+
+func NewFileStorage(path string) *FileStorage {
+	return &FileStorage{path: path}
+}
+
+func (s *FileStorage) Dump(metrics []models.Metrics) error {
+	producer, err := NewProducer(s.path)
+	if err != nil {
+		return err
+	}
+	defer producer.Close()
+
+	return producer.WriteMetrics(metrics)
+}
+
 type Producer struct {
 	file    *os.File
 	encoder *json.Encoder
