@@ -21,10 +21,16 @@ type AgentEnvConfig struct {
 }
 
 type ServerEnvConfig struct {
-	Address *string `env:"ADDRESS"`
+	Address         *string `env:"ADDRESS"`
+	StoreInterval   *string `env:"STORE_INTERVAL"`
+	FileStoragePath *string `env:"FILE_STORAGE_PATH"`
+	Restore         *bool   `env:"RESTORE"`
 }
 type ServerConfig struct {
-	Address string
+	Address         string
+	StoreInterval   string
+	FileStoragePath string
+	Restore         bool
 }
 
 func ParseAgentConfig() AgentConfig {
@@ -67,6 +73,9 @@ func ParseServerConfig() ServerConfig {
 	var envCfg ServerEnvConfig
 
 	address := flag.String("a", "localhost:8080", "адрес сервера")
+	storeInterval := flag.String("i", "300", "интервал времени в секундах, по истечении которого текущие показания сервера сохраняются на диск")
+	fileStoragePath := flag.String("f", "log.txt", "путь до файла, куда сохраняются текущие значения")
+	restore := flag.Bool("r", false, "определяет, загружать ли ранее сохранённые значения из указанного файла при старте сервера.")
 
 	flag.Parse()
 
@@ -78,8 +87,20 @@ func ParseServerConfig() ServerConfig {
 	if envCfg.Address != nil {
 		address = envCfg.Address
 	}
+	if envCfg.FileStoragePath != nil {
+		fileStoragePath = envCfg.FileStoragePath
+	}
+	if envCfg.StoreInterval != nil {
+		storeInterval = envCfg.StoreInterval
+	}
+	if envCfg.Restore != nil {
+		restore = envCfg.Restore
+	}
 
 	return ServerConfig{
-		Address: *address,
+		Address:         *address,
+		FileStoragePath: *fileStoragePath,
+		StoreInterval:   *storeInterval,
+		Restore:         *restore,
 	}
 }
