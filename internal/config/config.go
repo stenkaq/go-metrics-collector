@@ -22,13 +22,13 @@ type AgentEnvConfig struct {
 
 type ServerEnvConfig struct {
 	Address         *string `env:"ADDRESS"`
-	StoreInterval   *string `env:"STORE_INTERVAL"`
+	StoreInterval   *int    `env:"STORE_INTERVAL"`
 	FileStoragePath *string `env:"FILE_STORAGE_PATH"`
 	Restore         *bool   `env:"RESTORE"`
 }
 type ServerConfig struct {
 	Address         string
-	StoreInterval   string
+	StoreInterval   time.Duration
 	FileStoragePath string
 	Restore         bool
 }
@@ -73,9 +73,9 @@ func ParseServerConfig() ServerConfig {
 	var envCfg ServerEnvConfig
 
 	address := flag.String("a", "localhost:8080", "адрес сервера")
-	storeInterval := flag.String("i", "300", "интервал времени в секундах, по истечении которого текущие показания сервера сохраняются на диск")
-	fileStoragePath := flag.String("f", "log.txt", "путь до файла, куда сохраняются текущие значения")
-	restore := flag.Bool("r", false, "определяет, загружать ли ранее сохранённые значения из указанного файла при старте сервера.")
+	storeInterval := flag.Int("i", 300, "интервал времени в секундах, по истечении которого текущие показания сервера сохраняются на диск")
+	fileStoragePath := flag.String("f", "/tmp/log.json", "путь до файла, куда сохраняются текущие значения")
+	restore := flag.Bool("r", true, "определяет, загружать ли ранее сохранённые значения из указанного файла при старте сервера.")
 
 	flag.Parse()
 
@@ -100,7 +100,7 @@ func ParseServerConfig() ServerConfig {
 	return ServerConfig{
 		Address:         *address,
 		FileStoragePath: *fileStoragePath,
-		StoreInterval:   *storeInterval,
+		StoreInterval:   time.Duration(*storeInterval) * time.Second,
 		Restore:         *restore,
 	}
 }
