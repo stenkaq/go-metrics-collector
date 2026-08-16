@@ -35,41 +35,41 @@ type ServerConfig struct {
 }
 
 func ParseAgentConfig() AgentConfig {
-	var raw AgentEnvConfig
+	var cfg AgentEnvConfig
 
-	flag.StringVar(&raw.Address, "a", "localhost:8080", "адрес сервера")
-	flag.IntVar(&raw.ReportInterval, "r", 10, "интервал отправки метрик (сек.)")
-	flag.IntVar(&raw.PollInterval, "p", 2, "интервал опроса метрик (сек.)")
+	flag.StringVar(&cfg.Address, "a", "localhost:8080", "адрес сервера")
+	flag.IntVar(&cfg.ReportInterval, "r", 10, "интервал отправки метрик (сек.)")
+	flag.IntVar(&cfg.PollInterval, "p", 2, "интервал опроса метрик (сек.)")
 	flag.Parse()
 
-	if err := env.Parse(&raw); err != nil {
+	if err := env.Parse(&cfg); err != nil {
 		log.Fatalf("Ошибка конфигурации: %v", err)
 	}
 
 	return AgentConfig{
-		Address:        raw.Address,
-		ReportInterval: time.Duration(raw.ReportInterval) * time.Second,
-		PollInterval:   time.Duration(raw.PollInterval) * time.Second,
+		Address:        cfg.Address,
+		ReportInterval: time.Duration(cfg.ReportInterval) * time.Second,
+		PollInterval:   time.Duration(cfg.PollInterval) * time.Second,
 	}
 }
 
 func ParseServerConfig() ServerConfig {
-	var raw ServerEnvConfig
+	var cfg ServerEnvConfig
 
-	flag.StringVar(&raw.Address, "a", "localhost:8080", "адрес сервера")
-	flag.IntVar(&raw.StoreInterval, "i", 300, "интервал времени в секундах, по истечении которого текущие показания сервера сохраняются на диск")
-	flag.StringVar(&raw.FileStoragePath, "f", "/tmp/log.json", "путь до файла, куда сохраняются текущие значения")
-	flag.BoolVar(&raw.Restore, "r", true, "определяет, загружать ли ранее сохранённые значения из указанного файла при старте сервера.")
+	flag.StringVar(&cfg.Address, "a", "localhost:8080", "адрес сервера")
+	flag.IntVar(&cfg.StoreInterval, "i", 300, "интервал времени в секундах, по истечении которого текущие показания сервера сохраняются на диск")
+	flag.StringVar(&cfg.FileStoragePath, "f", "/tmp/log.json", "путь до файла, куда сохраняются текущие значения")
+	flag.BoolVar(&cfg.Restore, "r", true, "определяет, загружать ли ранее сохранённые значения из указанного файла при старте сервера.")
 	flag.Parse()
 
-	if err := env.Parse(&raw); err != nil {
+	if err := env.Parse(&cfg); err != nil {
 		log.Fatalf("Ошибка конфигурации: %v", err)
 	}
 
 	return ServerConfig{
-		Address:         raw.Address,
-		FileStoragePath: raw.FileStoragePath,
-		StoreInterval:   time.Duration(raw.StoreInterval) * time.Second,
-		Restore:         raw.Restore,
+		Address:         cfg.Address,
+		FileStoragePath: cfg.FileStoragePath,
+		StoreInterval:   time.Duration(cfg.StoreInterval) * time.Second,
+		Restore:         cfg.Restore,
 	}
 }
