@@ -1,7 +1,11 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
+	"sync"
 	"time"
 
 	"go-metrics-collector/internal/config"
@@ -67,23 +71,72 @@ func NewMetricsApp(cfg config.ServerConfig) (*App, error) {
 	}, nil
 }
 
-func (a *App) Run() error {
+func (a *App) Run(ctx context.Context) error {
 	defer a.logger.Sync()
 
+	server := &http.Server{
+		Addr:    a.cfg.Address,
+		Handler: a.router,
+	}
+	var wg sync.WaitGroup
+
 	if a.cfg.FileStoragePath != "" && a.cfg.StoreInterval > 0 {
-		go a.runMetricsDump()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			a.runMetricsDump(ctx)
+		}()
 	}
 
-	return a.router.Run(a.cfg.Address)
+	serverErr := make(chan error, 1)
+
+	go func() {
+		a.logger.Info(
+			"сервер запущен",
+			zap.String("address", a.cfg.Address),
+		)
+
+		err := server.ListenAndServe()
+
+		if !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
+		}
+	}()
+
+	select {
+	case err := <-serverErr:
+		a.logger.Error("сервер завершился с ошибкой", zap.Error(err))
+	case <-ctx.Done():
+		a.logger.Info("завершение работы сервера...")
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		a.logger.Error("ошибка graceful shutdown", zap.Error(err))
+	}
+
+	wg.Wait()
+	a.logger.Info("сервер остановлен")
+	return nil
 }
 
-func (a *App) runMetricsDump() {
+func (a *App) runMetricsDump(ctx context.Context) {
 	ticker := time.NewTicker(a.cfg.StoreInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		if err := dumpMetrics(a.service, a.storage); err != nil {
-			a.logger.Error("не удалось сохранить метрики на диск", zap.Error(err))
+	for {
+		select {
+		case <-ticker.C:
+			if err := dumpMetrics(a.service, a.storage); err != nil {
+				a.logger.Error("не удалось сохранить метрики на диск", zap.Error(err))
+			}
+		case <-ctx.Done():
+			if err := dumpMetrics(a.service, a.storage); err != nil {
+				a.logger.Error("не удалось сохранить метрики на диск", zap.Error(err))
+			}
+			return
 		}
 	}
 }
