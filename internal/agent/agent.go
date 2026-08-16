@@ -20,13 +20,6 @@ type Agent interface {
 	SendMetrics()
 }
 
-type MetricsUpdateParams struct {
-	ID    string   `json:"id"`              // имя метрики
-	MType string   `json:"type"`            // параметр, принимающий значение gauge или counter
-	Delta *int64   `json:"delta,omitempty"` // значение метрики в случае передачи counter
-	Value *float64 `json:"value,omitempty"` // значение метрики в случае передачи gauge
-}
-
 type HTTPAgent struct {
 	HTTPClient *resty.Client
 	BaseURL    string
@@ -85,10 +78,10 @@ func (h *HTTPAgent) sendMetric(name string, mType string, value any) error {
 	}
 
 	url := fmt.Sprintf("%s/update/", h.BaseURL)
-	body := MetricsUpdateParams{
-			MType: mType,
-			ID:    name,
-		}
+	body := models.Metrics{
+		MType: mType,
+		ID:    name,
+	}
 
 	switch mType {
 	case models.Counter:
