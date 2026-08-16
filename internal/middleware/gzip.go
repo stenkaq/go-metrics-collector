@@ -33,9 +33,20 @@ func (w *gzipWriter) WriteString(s string) (int, error) {
 	return w.Write([]byte(s))
 }
 
+func hasToken(header, token string) bool {
+	for split := range strings.SplitSeq(header, ",") {
+		name, _, _ := strings.Cut(split, ";")
+		if strings.EqualFold(strings.TrimSpace(name), token) {
+			return true
+		}
+	} 
+
+	return false
+}
+
 func GzipRequest() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		if !strings.Contains(ctx.GetHeader("Content-Encoding"), "gzip") {
+		if !hasToken(ctx.GetHeader("Content-Encoding"), "gzip") {
 			ctx.Next()
 			return
 		}
@@ -55,7 +66,7 @@ func GzipRequest() gin.HandlerFunc {
 
 func GzipResponse() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		if !strings.Contains(ctx.GetHeader("Accept-Encoding"), "gzip") {
+		if !hasToken(ctx.GetHeader("Accept-Encoding"), "gzip") {
 			ctx.Next()
 			return
 		}
