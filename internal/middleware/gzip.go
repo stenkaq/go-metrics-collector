@@ -11,15 +11,26 @@ import (
 
 type gzipWriter struct {
 	gin.ResponseWriter
-	gz *gzip.Writer
+	gz         *gzip.Writer
+	compressed bool
 }
 
 func (w *gzipWriter) Write(data []byte) (int, error) {
-	return w.gz.Write(data)
+	ct := w.Header().Get("Content-Type")
+	if strings.Contains(ct, "application/json") ||
+		strings.Contains(ct, "text/html") {
+
+		w.compressed = true
+		w.Header().Set("Content-Encoding", "gzip")
+
+		return w.gz.Write(data)
+	}
+
+	return w.ResponseWriter.Write(data)
 }
 
 func (w *gzipWriter) WriteString(s string) (int, error) {
-	return w.gz.Write([]byte(s))
+	return w.Write([]byte(s))
 }
 
 func GzipRequest() gin.HandlerFunc {
@@ -55,10 +66,18 @@ func GzipResponse() gin.HandlerFunc {
 			ctx.Abort()
 			return
 		}
-		defer gz.Close()
 
-		ctx.Writer.Header().Set("Content-Encoding", "gzip")
-		ctx.Writer = &gzipWriter{ResponseWriter: ctx.Writer, gz: gz}
+		gw := &gzipWriter{
+			ResponseWriter: ctx.Writer,
+			gz:             gz,
+			compressed:     false,
+		}
+		ctx.Writer = gw
+
 		ctx.Next()
+
+		if gw.compressed {
+			gz.Close()
+		}
 	}
 }
