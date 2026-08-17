@@ -13,6 +13,6 @@ func NewAgent(address string) agent.Agent {
 			Gauges:   make(map[string]float64),
 		},
 		BaseURL:    "http://" + address,
-		HTTPClient: resty.New(),
+		HTTPClient: resty.New().OnBeforeRequest(agent.GzipRequest()),
 	}
 }

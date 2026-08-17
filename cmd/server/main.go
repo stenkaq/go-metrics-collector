@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	"log"
+	"os/signal"
+	"syscall"
 
 	"go-metrics-collector/internal/app"
 	"go-metrics-collector/internal/config"
@@ -9,10 +12,15 @@ import (
 
 func main() {
 	cfg := config.ParseServerConfig()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	router := app.NewMetricsRouter()
+	metricsApp, err := app.NewMetricsApp(cfg)
+	if err != nil {
+		log.Fatalf("Ошибка инициализации сервера: %v", err)
+	}
 
-	if err := router.Run(cfg.Address); err != nil {
+	if err := metricsApp.Run(ctx); err != nil {
 		log.Fatalf("Ошибка запуска сервера: %v", err)
 	}
 }

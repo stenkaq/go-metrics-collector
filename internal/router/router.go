@@ -5,31 +5,38 @@ import (
 	"path"
 
 	"go-metrics-collector/internal/handler"
+	"go-metrics-collector/internal/middleware"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type Handlers struct {
 	Metrics handler.MetricsHandler
 }
 
-func New(handlers Handlers) *gin.Engine {
-	router := gin.Default()
+func New(handlers Handlers, logger *zap.Logger, updateMiddlewares ...gin.HandlerFunc) *gin.Engine {
+	router := gin.New()
 
 	router.RedirectTrailingSlash = false
 	router.RedirectFixedPath = false
 
-	router.Use(rejectUncleanPath())
+	router.Use(
+		middleware.LogRequest(logger),
+		middleware.LogResponse(logger),
+		middleware.GzipRequest(),
+		middleware.GzipResponse(),
+		gin.Recovery(),
+		rejectUncleanPath(),
+	)
 
-	router.POST("/update/:type/:name/:value", func(ctx *gin.Context) {
-		handlers.Metrics.UpdateMetric(ctx.Writer, ctx.Param("type"), ctx.Param("name"), ctx.Param("value"))
-	})
-	router.GET("/", func(ctx *gin.Context) {
-		handlers.Metrics.GetMetrics(ctx.Writer)
-	})
-	router.GET("/value/:type/:name", func(ctx *gin.Context) {
-		handlers.Metrics.GetMetric(ctx.Writer, ctx.Param("type"), ctx.Param("name"))
-	})
+	updates := router.Group("/update", updateMiddlewares...)
+	updates.POST("/", handlers.Metrics.UpdateMetricV2)
+	updates.POST("/:type/:name/:value", handlers.Metrics.UpdateMetric)
+
+	router.POST("/value/", handlers.Metrics.GetMetricV2)
+	router.GET("/value/:type/:name", handlers.Metrics.GetMetric)
+	router.GET("/", handlers.Metrics.GetMetrics)
 
 	return router
 }

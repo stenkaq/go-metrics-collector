@@ -6,16 +6,10 @@ import (
 )
 
 type MetricsRepository interface {
-	Save(key string, params models.Metrics)
-	GetByKey(key string) (models.Metrics, bool)
-	GetMetrics() map[string]models.Metrics
-	IncrementCounter(params IncrementCounterParams)
-}
-
-type IncrementCounterParams struct {
-	Value int64
-	Key   string
-	Name  string
+	Save(metric models.Metrics)
+	Get(mType string, name string) (models.Metrics, bool)
+	GetMetrics() []models.Metrics
+	IncrementCounter(name string, delta int64)
 }
 
 type metricsRepository struct {
@@ -35,48 +29,52 @@ func NewMetricsRepository() MetricsRepository {
 	}
 }
 
-func (s *metricsRepository) Save(key string, params models.Metrics) {
+func (s *metricsRepository) Save(metric models.Metrics) {
 	s.memStorage.mu.Lock()
 	defer s.memStorage.mu.Unlock()
 
-	s.memStorage.metrics[key] = params
+	s.memStorage.metrics[compoundKey(metric.MType, metric.ID)] = metric
 }
 
-func (s *metricsRepository) GetByKey(key string) (models.Metrics, bool) {
+func (s *metricsRepository) Get(mType string, name string) (models.Metrics, bool) {
 	s.memStorage.mu.RLock()
 	defer s.memStorage.mu.RUnlock()
 
-	val, exists := s.memStorage.metrics[key]
+	val, exists := s.memStorage.metrics[compoundKey(mType, name)]
 
 	return val, exists
 }
 
-func (s *metricsRepository) GetMetrics() map[string]models.Metrics {
+func (s *metricsRepository) GetMetrics() []models.Metrics {
 	s.memStorage.mu.RLock()
 	defer s.memStorage.mu.RUnlock()
 
-	metrics := make(map[string]models.Metrics, len(s.memStorage.metrics))
-	for key, metric := range s.memStorage.metrics {
-		metrics[key] = metric
+	metrics := make([]models.Metrics, 0, len(s.memStorage.metrics))
+	for _, metric := range s.memStorage.metrics {
+		metrics = append(metrics, metric)
 	}
 
 	return metrics
 }
 
-func (s *metricsRepository) IncrementCounter(params IncrementCounterParams) {
+func (s *metricsRepository) IncrementCounter(name string, delta int64) {
 	s.memStorage.mu.Lock()
 	defer s.memStorage.mu.Unlock()
 
-	metric, exists := s.memStorage.metrics[params.Key]
+	key := compoundKey(models.Counter, name)
+	metric, exists := s.memStorage.metrics[key]
 
-	delta := params.Value
 	if exists && metric.Delta != nil {
 		delta += *metric.Delta
 	}
 
-	metric.ID = params.Name
+	metric.ID = name
 	metric.MType = models.Counter
 	metric.Delta = &delta
 
-	s.memStorage.metrics[params.Key] = metric
+	s.memStorage.metrics[key] = metric
+}
+
+func compoundKey(mType string, name string) string {
+	return mType + "-" + name
 }
