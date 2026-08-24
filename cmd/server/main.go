@@ -15,7 +15,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	metricsApp, err := app.NewMetricsApp(cfg)
+	metricsApp, err := app.NewMetricsApp(ctx, cfg)
 	if err != nil {
 		log.Fatalf("Ошибка инициализации сервера: %v", err)
 	}

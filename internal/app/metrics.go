@@ -17,6 +17,7 @@ import (
 	"go-metrics-collector/internal/storage"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 )
 
@@ -26,17 +27,31 @@ type App struct {
 	service service.MetricsService
 	storage *storage.FileStorage
 	logger  *zap.Logger
+	pool    *pgxpool.Pool
 }
 
-func NewMetricsApp(cfg config.ServerConfig) (*App, error) {
+func NewMetricsApp(ctx context.Context, cfg config.ServerConfig) (*App, error) {
 	logger, err := zap.NewDevelopment()
 	if err != nil {
 		return nil, fmt.Errorf("не удалось создать zap логер: %w", err)
 	}
 
+	var pool *pgxpool.Pool
+	if cfg.DatabaseDSN != "" {
+		pool, err = pgxpool.New(ctx, cfg.DatabaseDSN)
+		if err != nil {
+			return nil, fmt.Errorf("не удалось создать пул подключений: %w", err)
+		}
+	}
+
 	metricsRepository := repository.NewMetricsRepository()
 	metricsService := service.NewMetricsService(metricsRepository)
 	metricsHandler := handler.NewMetricsHandler(metricsService)
+
+	dbRepository := repository.NewDBRepository(pool)
+	dbService := service.NewDBService(dbRepository)
+	dbHandler := handler.NewDBHandler(dbService)
+
 	fileStorage := storage.NewFileStorage(cfg.FileStoragePath)
 
 	storeEnabled := cfg.FileStoragePath != ""
@@ -57,6 +72,7 @@ func NewMetricsApp(cfg config.ServerConfig) (*App, error) {
 	metricsRouter := router.New(
 		router.Handlers{
 			Metrics: metricsHandler,
+			DB:      dbHandler,
 		},
 		logger,
 		updateMiddlewares...,
@@ -68,11 +84,15 @@ func NewMetricsApp(cfg config.ServerConfig) (*App, error) {
 		service: metricsService,
 		storage: fileStorage,
 		logger:  logger,
+		pool:  pool,
 	}, nil
 }
 
 func (a *App) Run(ctx context.Context) error {
 	defer a.logger.Sync()
+	if a.pool != nil {
+		defer a.pool.Close()
+	}
 
 	server := &http.Server{
 		Addr:    a.cfg.Address,
