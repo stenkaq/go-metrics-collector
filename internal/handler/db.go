@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"fmt"
 	"net/http"
 
 	"go-metrics-collector/internal/service"
@@ -23,7 +22,7 @@ func NewDBHandler(s service.DBService) DBHandler {
 
 func (h *dbHandler) Ping(c *gin.Context) {
 	if err := h.service.Ping(c.Request.Context()); err != nil {
-		http.Error(c.Writer, fmt.Sprintf("Ошибка при пинге БД: %s", err), http.StatusInternalServerError)
+		http.Error(c.Writer, "Ошибка при пинге БД", http.StatusInternalServerError)
 		return
 	}
 
