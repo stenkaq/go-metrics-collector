@@ -84,7 +84,7 @@ func NewMetricsApp(ctx context.Context, cfg config.ServerConfig) (*App, error) {
 		service: metricsService,
 		storage: fileStorage,
 		logger:  logger,
-		pool:  pool,
+		pool:    pool,
 	}, nil
 }
 
