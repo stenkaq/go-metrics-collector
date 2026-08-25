@@ -37,6 +37,8 @@ func NewMetricsApp(ctx context.Context, cfg config.ServerConfig) (*App, error) {
 	}
 
 	var pool *pgxpool.Pool
+	var metricsRepository repository.MetricsRepository
+
 	if cfg.DatabaseDSN != "" {
 		pool, err = pgxpool.New(ctx, cfg.DatabaseDSN)
 		if err != nil {
@@ -44,12 +46,16 @@ func NewMetricsApp(ctx context.Context, cfg config.ServerConfig) (*App, error) {
 		}
 	}
 
-	metricsRepository := repository.NewMetricsRepository()
+	if pool != nil {
+		metricsRepository = repository.NewPgMetricsRepository(pool)
+	} else {
+		metricsRepository = repository.NewMetricsRepository()
+	}
+
 	metricsService := service.NewMetricsService(metricsRepository)
 	metricsHandler := handler.NewMetricsHandler(metricsService)
 
-	dbRepository := repository.NewDBRepository(pool)
-	dbService := service.NewDBService(dbRepository)
+	dbService := service.NewDBService(repository.NewDBRepository(pool))
 	dbHandler := handler.NewDBHandler(dbService)
 
 	fileStorage := storage.NewFileStorage(cfg.FileStoragePath)
@@ -57,13 +63,13 @@ func NewMetricsApp(ctx context.Context, cfg config.ServerConfig) (*App, error) {
 	storeEnabled := cfg.FileStoragePath != ""
 
 	if storeEnabled && cfg.Restore {
-		restoreMetrics(metricsService, fileStorage, logger)
+		restoreMetrics(ctx, metricsService, fileStorage, logger)
 	}
 
 	var updateMiddlewares []gin.HandlerFunc
 	if storeEnabled && cfg.StoreInterval == 0 {
-		dump := func() error {
-			return dumpMetrics(metricsService, fileStorage)
+		dump := func(ctx context.Context) error {
+			return dumpMetrics(ctx, metricsService, fileStorage)
 		}
 
 		updateMiddlewares = append(updateMiddlewares, middleware.DumpMetrics(dump, logger))
@@ -149,11 +155,14 @@ func (a *App) runMetricsDump(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			if err := dumpMetrics(a.service, a.storage); err != nil {
+			if err := dumpMetrics(ctx, a.service, a.storage); err != nil {
 				a.logger.Error("не удалось сохранить метрики на диск", zap.Error(err))
 			}
 		case <-ctx.Done():
-			if err := dumpMetrics(a.service, a.storage); err != nil {
+			dumpCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if err := dumpMetrics(dumpCtx, a.service, a.storage); err != nil {
 				a.logger.Error("не удалось сохранить метрики на диск", zap.Error(err))
 			}
 			return
@@ -161,11 +170,21 @@ func (a *App) runMetricsDump(ctx context.Context) {
 	}
 }
 
-func dumpMetrics(metricsService service.MetricsService, fileStorage *storage.FileStorage) error {
-	return fileStorage.Dump(metricsService.GetMetrics())
+func dumpMetrics(
+	ctx context.Context,
+	metricsService service.MetricsService,
+	fileStorage *storage.FileStorage,
+) error {
+	metrics, err := metricsService.GetMetrics(ctx)
+	if err != nil {
+		return fmt.Errorf("не удалось прочитать метрики: %w", err)
+	}
+
+	return fileStorage.Dump(metrics)
 }
 
 func restoreMetrics(
+	ctx context.Context,
 	metricsService service.MetricsService,
 	fileStorage *storage.FileStorage,
 	logger *zap.Logger,
@@ -181,6 +200,10 @@ func restoreMetrics(
 		return
 	}
 
-	metricsService.Restore(metrics)
+	if err := metricsService.Restore(ctx, metrics); err != nil {
+		logger.Warn("не удалось восстановить метрики", zap.Error(err))
+		return
+	}
+
 	logger.Info("метрики восстановлены из файла")
 }

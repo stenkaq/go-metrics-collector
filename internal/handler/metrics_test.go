@@ -1,6 +1,7 @@
 package handler_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -46,32 +47,38 @@ func newMetricsServiceStub() (*metricsServiceStub, *serviceCalls) {
 	return &metricsServiceStub{calls: calls}, calls
 }
 
-func (s *metricsServiceStub) UpdateCounterMetricValue(params service.UpdateCounterMetricValueParams) {
+func (s *metricsServiceStub) UpdateCounterMetricValue(_ context.Context, params service.UpdateCounterMetricValueParams) error {
 	s.calls.values = append(s.calls.values, serviceCall{
 		metricType: params.Type,
 		name:       params.Name,
 		counter:    params.Value,
 	})
+
+	return nil
 }
 
-func (s *metricsServiceStub) UpdateGaugeMetricValue(params service.UpdateGaugeMetricValueParams) {
+func (s *metricsServiceStub) UpdateGaugeMetricValue(_ context.Context, params service.UpdateGaugeMetricValueParams) error {
 	s.calls.values = append(s.calls.values, serviceCall{
 		metricType: params.Type,
 		name:       params.Name,
 		gauge:      params.Value,
 	})
+
+	return nil
 }
 
-func (s *metricsServiceStub) GetMetric(mType, name string) (models.Metrics, bool) {
+func (s *metricsServiceStub) GetMetric(_ context.Context, mType, name string) (models.Metrics, bool, error) {
 	s.calls.gets = append(s.calls.gets, serviceCall{metricType: mType, name: name})
-	return s.metric, s.exists
+	return s.metric, s.exists, nil
 }
 
-func (s *metricsServiceStub) GetMetrics() []models.Metrics {
-	return s.metrics
+func (s *metricsServiceStub) GetMetrics(_ context.Context) ([]models.Metrics, error) {
+	return s.metrics, nil
 }
 
-func (s *metricsServiceStub) Restore(metrics []models.Metrics) {}
+func (s *metricsServiceStub) Restore(_ context.Context, _ []models.Metrics) error {
+	return nil
+}
 
 type errReader struct{}
 

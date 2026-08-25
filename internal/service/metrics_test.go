@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"sort"
 	"testing"
 
@@ -22,25 +23,26 @@ func (r *metricsRepositoryStub) key(mType string, name string) string {
 	return mType + "|" + name
 }
 
-func (r *metricsRepositoryStub) Save(metric models.Metrics) {
+func (r *metricsRepositoryStub) Save(_ context.Context, metric models.Metrics) error {
 	r.metrics[r.key(metric.MType, metric.ID)] = metric
+	return nil
 }
 
-func (r *metricsRepositoryStub) Get(mType string, name string) (models.Metrics, bool) {
+func (r *metricsRepositoryStub) Get(_ context.Context, mType string, name string) (models.Metrics, bool, error) {
 	metric, exists := r.metrics[r.key(mType, name)]
-	return metric, exists
+	return metric, exists, nil
 }
 
-func (r *metricsRepositoryStub) GetMetrics() []models.Metrics {
+func (r *metricsRepositoryStub) GetMetrics(_ context.Context) ([]models.Metrics, error) {
 	metrics := make([]models.Metrics, 0, len(r.metrics))
 	for _, metric := range r.metrics {
 		metrics = append(metrics, metric)
 	}
 
-	return metrics
+	return metrics, nil
 }
 
-func (r *metricsRepositoryStub) IncrementCounter(name string, delta int64) {
+func (r *metricsRepositoryStub) IncrementCounter(_ context.Context, name string, delta int64) error {
 	key := r.key(models.Counter, name)
 	metric, exists := r.metrics[key]
 
@@ -54,24 +56,27 @@ func (r *metricsRepositoryStub) IncrementCounter(name string, delta int64) {
 	metric.Value = nil
 
 	r.metrics[key] = metric
+
+	return nil
 }
 
 func TestMetricsServiceUpdateCounterMetricValue(t *testing.T) {
+	ctx := context.Background()
 	repository := newMetricsRepositoryStub()
 	metricsService := NewMetricsService(repository)
 
-	metricsService.UpdateCounterMetricValue(UpdateCounterMetricValueParams{
+	metricsService.UpdateCounterMetricValue(ctx, UpdateCounterMetricValueParams{
 		Type:  models.Counter,
 		Name:  "PollCount",
 		Value: 3,
 	})
-	metricsService.UpdateCounterMetricValue(UpdateCounterMetricValueParams{
+	metricsService.UpdateCounterMetricValue(ctx, UpdateCounterMetricValueParams{
 		Type:  models.Counter,
 		Name:  "PollCount",
 		Value: 2,
 	})
 
-	metric, exists := repository.Get(models.Counter, "PollCount")
+	metric, exists := mustGet(t, repository, models.Counter, "PollCount")
 	if !exists {
 		t.Fatal("counter metric не была сохранена")
 	}
@@ -90,21 +95,22 @@ func TestMetricsServiceUpdateCounterMetricValue(t *testing.T) {
 }
 
 func TestMetricsServiceUpdateGaugeMetricValue(t *testing.T) {
+	ctx := context.Background()
 	repository := newMetricsRepositoryStub()
 	metricsService := NewMetricsService(repository)
 
-	metricsService.UpdateGaugeMetricValue(UpdateGaugeMetricValueParams{
+	metricsService.UpdateGaugeMetricValue(ctx, UpdateGaugeMetricValueParams{
 		Type:  models.Gauge,
 		Name:  "Alloc",
 		Value: 12.5,
 	})
-	metricsService.UpdateGaugeMetricValue(UpdateGaugeMetricValueParams{
+	metricsService.UpdateGaugeMetricValue(ctx, UpdateGaugeMetricValueParams{
 		Type:  models.Gauge,
 		Name:  "Alloc",
 		Value: 4.25,
 	})
 
-	metric, exists := repository.Get(models.Gauge, "Alloc")
+	metric, exists := mustGet(t, repository, models.Gauge, "Alloc")
 	if !exists {
 		t.Fatal("gauge metric was not saved")
 	}
@@ -126,23 +132,24 @@ func TestMetricsServiceUpdateGaugeMetricValue(t *testing.T) {
 }
 
 func TestMetricsServiceGetMetric(t *testing.T) {
+	ctx := context.Background()
 	repository := newMetricsRepositoryStub()
 	metricsService := NewMetricsService(repository)
 
-	metricsService.UpdateCounterMetricValue(UpdateCounterMetricValueParams{Name: "Same", Value: 7})
-	metricsService.UpdateGaugeMetricValue(UpdateGaugeMetricValueParams{Name: "Same", Value: 1.5})
+	metricsService.UpdateCounterMetricValue(ctx, UpdateCounterMetricValueParams{Name: "Same", Value: 7})
+	metricsService.UpdateGaugeMetricValue(ctx, UpdateGaugeMetricValueParams{Name: "Same", Value: 1.5})
 
-	counter, exists := metricsService.GetMetric(models.Counter, "Same")
+	counter, exists := mustGetFromService(t, metricsService, models.Counter, "Same")
 	if !exists || counter.Delta == nil || *counter.Delta != 7 {
 		t.Errorf("counter = %+v, want delta 7", counter)
 	}
 
-	gauge, exists := metricsService.GetMetric(models.Gauge, "Same")
+	gauge, exists := mustGetFromService(t, metricsService, models.Gauge, "Same")
 	if !exists || gauge.Value == nil || *gauge.Value != 1.5 {
 		t.Errorf("gauge = %+v, want value 1.5", gauge)
 	}
 
-	if _, exists := metricsService.GetMetric(models.Gauge, "Nope"); exists {
+	if _, exists := mustGetFromService(t, metricsService, models.Gauge, "Nope"); exists {
 		t.Error("GetMetric вернул несуществующую метрику")
 	}
 }
@@ -153,12 +160,12 @@ func TestMetricsServiceRestore(t *testing.T) {
 
 	delta := int64(42)
 	value := 12.5
-	metricsService.Restore([]models.Metrics{
+	mustRestore(t, metricsService, []models.Metrics{
 		{ID: "PollCount", MType: models.Counter, Delta: &delta},
 		{ID: "Alloc", MType: models.Gauge, Value: &value},
 	})
 
-	metrics := metricsService.GetMetrics()
+	metrics := mustGetMetrics(t, metricsService)
 	sort.Slice(metrics, func(i, j int) bool { return metrics[i].ID < metrics[j].ID })
 
 	if len(metrics) != 2 {
@@ -169,5 +176,56 @@ func TestMetricsServiceRestore(t *testing.T) {
 	}
 	if metrics[1].ID != "PollCount" || metrics[1].Delta == nil || *metrics[1].Delta != delta {
 		t.Errorf("metrics[1] = %+v, want PollCount = %v", metrics[1], delta)
+	}
+}
+
+func mustGet(
+	t *testing.T,
+	r repository.MetricsRepository,
+	mType string,
+	name string,
+) (models.Metrics, bool) {
+	t.Helper()
+
+	metric, exists, err := r.Get(context.Background(), mType, name)
+	if err != nil {
+		t.Fatalf("repository.Get: %v", err)
+	}
+
+	return metric, exists
+}
+
+func mustGetFromService(
+	t *testing.T,
+	s MetricsService,
+	mType string,
+	name string,
+) (models.Metrics, bool) {
+	t.Helper()
+
+	metric, exists, err := s.GetMetric(context.Background(), mType, name)
+	if err != nil {
+		t.Fatalf("GetMetric: %v", err)
+	}
+
+	return metric, exists
+}
+
+func mustGetMetrics(t *testing.T, s MetricsService) []models.Metrics {
+	t.Helper()
+
+	metrics, err := s.GetMetrics(context.Background())
+	if err != nil {
+		t.Fatalf("GetMetrics: %v", err)
+	}
+
+	return metrics
+}
+
+func mustRestore(t *testing.T, s MetricsService, metrics []models.Metrics) {
+	t.Helper()
+
+	if err := s.Restore(context.Background(), metrics); err != nil {
+		t.Fatalf("Restore: %v", err)
 	}
 }

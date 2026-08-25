@@ -11,10 +11,10 @@ type DBService interface {
 }
 
 type dbService struct {
-	repository repository.DBRepository
+	repository repository.Pinger
 }
 
-func NewDBService(r repository.DBRepository) DBService {
+func NewDBService(r repository.Pinger) DBService {
 	return &dbService{repository: r}
 }
 
