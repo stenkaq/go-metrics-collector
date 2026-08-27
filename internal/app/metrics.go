@@ -28,6 +28,8 @@ type App struct {
 	storage *storage.FileStorage
 	logger  *zap.Logger
 	pool    *pgxpool.Pool
+	// нужно ли читать метрики из файла на старте и сбрасывать их туда
+	storeEnabled bool
 }
 
 func NewMetricsApp(ctx context.Context, cfg config.ServerConfig) (*App, error) {
@@ -43,6 +45,11 @@ func NewMetricsApp(ctx context.Context, cfg config.ServerConfig) (*App, error) {
 		pool, err = pgxpool.New(ctx, cfg.DatabaseDSN)
 		if err != nil {
 			return nil, fmt.Errorf("не удалось создать пул подключений: %w", err)
+		}
+
+		if err := repository.Migrate(cfg.DatabaseDSN); err != nil {
+			pool.Close()
+			return nil, fmt.Errorf("не удалось применить миграции: %w", err)
 		}
 	}
 
@@ -60,7 +67,8 @@ func NewMetricsApp(ctx context.Context, cfg config.ServerConfig) (*App, error) {
 
 	fileStorage := storage.NewFileStorage(cfg.FileStoragePath)
 
-	storeEnabled := cfg.FileStoragePath != ""
+	// когда есть бд, то дампить и восстанавливать из файла не нужно
+	storeEnabled := cfg.FileStoragePath != "" && pool == nil
 
 	if storeEnabled && cfg.Restore {
 		restoreMetrics(ctx, metricsService, fileStorage, logger)
@@ -85,12 +93,13 @@ func NewMetricsApp(ctx context.Context, cfg config.ServerConfig) (*App, error) {
 	)
 
 	return &App{
-		cfg:     cfg,
-		router:  metricsRouter,
-		service: metricsService,
-		storage: fileStorage,
-		logger:  logger,
-		pool:    pool,
+		cfg:          cfg,
+		router:       metricsRouter,
+		service:      metricsService,
+		storage:      fileStorage,
+		logger:       logger,
+		pool:         pool,
+		storeEnabled: storeEnabled,
 	}, nil
 }
 
@@ -106,7 +115,7 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	var wg sync.WaitGroup
 
-	if a.cfg.FileStoragePath != "" && a.cfg.StoreInterval > 0 {
+	if a.storeEnabled && a.cfg.StoreInterval > 0 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
