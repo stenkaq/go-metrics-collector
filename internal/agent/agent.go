@@ -125,9 +125,13 @@ func (h *HTTPAgent) sendBatch(metrics []models.Metrics) error {
 
 	if status == http.StatusOK {
 		return nil
-	} else {
-		return fmt.Errorf("ответ %s: status=%s body=%q", url, response.Status(), response.String())
 	}
+
+	if status == http.StatusNotFound {
+		return fmt.Errorf("ответ %s: status=%s body=%q: %w", url, response.Status(), response.String(), errBatchUnsupported)
+	}
+
+	return fmt.Errorf("ответ %s: status=%s body=%q", url, response.Status(), response.String())
 }
 
 func (h *HTTPAgent) sendMetric(metric models.Metrics) error {
