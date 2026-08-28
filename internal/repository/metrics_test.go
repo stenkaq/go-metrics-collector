@@ -11,7 +11,7 @@ func TestMetricsRepositoryGetMetricsReturnsSnapshot(t *testing.T) {
 	ctx := context.Background()
 	repository := NewMetricsRepository()
 	value := 42.0
-	repository.Save(ctx, models.Metrics{ID: "test", MType: models.Gauge, Value: &value})
+	mustUpdateGauge(t, repository, ctx, "test", value)
 
 	metrics := mustGetMetrics(t, repository, ctx)
 	metrics[0] = models.Metrics{}
@@ -29,7 +29,7 @@ func TestMetricsRepositoryGetMetricsReturnsNamesNotKeys(t *testing.T) {
 	ctx := context.Background()
 	repository := NewMetricsRepository()
 	value := 12.5
-	repository.Save(ctx, models.Metrics{ID: "Alloc", MType: models.Gauge, Value: &value})
+	mustUpdateGauge(t, repository, ctx, "Alloc", value)
 
 	metrics := mustGetMetrics(t, repository, ctx)
 	if len(metrics) != 1 {
@@ -47,7 +47,7 @@ func TestMetricsRepositorySeparatesTypesWithTheSameName(t *testing.T) {
 	ctx := context.Background()
 	repository := NewMetricsRepository()
 	value := 1.5
-	repository.Save(ctx, models.Metrics{ID: "Same", MType: models.Gauge, Value: &value})
+	mustUpdateGauge(t, repository, ctx, "Same", value)
 	mustIncrement(t, repository, ctx, "Same", 7)
 
 	gauge, exists := mustGet(t, repository, ctx, models.Gauge, "Same")
@@ -115,6 +115,14 @@ func mustGetMetrics(t *testing.T, r MetricsRepository, ctx context.Context) []mo
 	}
 
 	return metrics
+}
+
+func mustUpdateGauge(t *testing.T, r MetricsRepository, ctx context.Context, name string, value float64) {
+	t.Helper()
+
+	if err := r.UpdateGauge(ctx, name, value); err != nil {
+		t.Fatalf("UpdateGauge(%q, %v): %v", name, value, err)
+	}
 }
 
 func mustIncrement(t *testing.T, r MetricsRepository, ctx context.Context, name string, delta int64) {

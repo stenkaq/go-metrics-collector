@@ -19,6 +19,7 @@ type UpdateCounterMetricValueParams struct {
 }
 
 type MetricsService interface {
+	UpdateMetrics(ctx context.Context, metrics []models.Metrics) error
 	UpdateGaugeMetricValue(ctx context.Context, params UpdateGaugeMetricValueParams) error
 	UpdateCounterMetricValue(ctx context.Context, params UpdateCounterMetricValueParams) error
 	GetMetric(ctx context.Context, mType string, name string) (models.Metrics, bool, error)
@@ -36,14 +37,12 @@ func NewMetricsService(r repository.MetricsRepository) MetricsService {
 	return &metricsService{repository: r}
 }
 
-func (s *metricsService) UpdateGaugeMetricValue(ctx context.Context, params UpdateGaugeMetricValueParams) error {
-	value := params.Value
+func (s *metricsService) UpdateMetrics(ctx context.Context, metrics []models.Metrics) error {
+	return s.repository.SaveBatch(ctx, metrics)
+}
 
-	return s.repository.Save(ctx, models.Metrics{
-		ID:    params.Name,
-		MType: models.Gauge,
-		Value: &value,
-	})
+func (s *metricsService) UpdateGaugeMetricValue(ctx context.Context, params UpdateGaugeMetricValueParams) error {
+	return s.repository.UpdateGauge(ctx, params.Name, params.Value)
 }
 
 func (s *metricsService) UpdateCounterMetricValue(ctx context.Context, params UpdateCounterMetricValueParams) error {

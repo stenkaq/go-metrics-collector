@@ -9,8 +9,10 @@ import (
 
 type MetricsRepository interface {
 	Save(ctx context.Context, metric models.Metrics) error
+	SaveBatch(ctx context.Context, metrics []models.Metrics) error
 	Get(ctx context.Context, mType string, name string) (models.Metrics, bool, error)
 	GetMetrics(ctx context.Context) ([]models.Metrics, error)
+	UpdateGauge(ctx context.Context, name string, value float64) error
 	IncrementCounter(ctx context.Context, name string, delta int64) error
 }
 
@@ -31,6 +33,41 @@ func NewMetricsRepository() MetricsRepository {
 			metrics: make(map[string]models.Metrics),
 		},
 	}
+}
+
+func (s *metricsRepository) SaveBatch(ctx context.Context, metrics []models.Metrics) error {
+	s.memStorage.mu.Lock()
+	defer s.memStorage.mu.Unlock()
+
+	for _, metric := range metrics {
+		key := compoundKey(metric.MType, metric.ID)
+
+		switch metric.MType {
+		case models.Gauge:
+			value := *metric.Value
+
+			s.memStorage.metrics[key] = models.Metrics{
+				ID:    metric.ID,
+				MType: metric.MType,
+				Value: &value,
+			}
+
+		case models.Counter:
+			delta := *metric.Delta
+
+			if existMetric, exists := s.memStorage.metrics[key]; exists && existMetric.Delta != nil {
+				delta += *existMetric.Delta
+			}
+
+			s.memStorage.metrics[key] = models.Metrics{
+				ID:    metric.ID,
+				MType: metric.MType,
+				Delta: &delta,
+			}
+		}
+	}
+
+	return nil
 }
 
 func (s *metricsRepository) Save(_ context.Context, metric models.Metrics) error {
@@ -61,6 +98,19 @@ func (s *metricsRepository) GetMetrics(_ context.Context) ([]models.Metrics, err
 	}
 
 	return metrics, nil
+}
+
+func (s *metricsRepository) UpdateGauge(_ context.Context, name string, value float64) error {
+	s.memStorage.mu.Lock()
+	defer s.memStorage.mu.Unlock()
+
+	s.memStorage.metrics[compoundKey(models.Gauge, name)] = models.Metrics{
+		ID:    name,
+		MType: models.Gauge,
+		Value: &value,
+	}
+
+	return nil
 }
 
 func (s *metricsRepository) IncrementCounter(_ context.Context, name string, delta int64) error {

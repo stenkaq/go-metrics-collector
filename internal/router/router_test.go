@@ -33,6 +33,7 @@ func (h *metricsHandlerStub) record(c *gin.Context, method string) {
 	io.WriteString(c.Writer, method)
 }
 
+func (h *metricsHandlerStub) UpdateMetrics(c *gin.Context)  { h.record(c, "UpdateMetrics") }
 func (h *metricsHandlerStub) UpdateMetric(c *gin.Context)   { h.record(c, "UpdateMetric") }
 func (h *metricsHandlerStub) UpdateMetricV2(c *gin.Context) { h.record(c, "UpdateMetricV2") }
 func (h *metricsHandlerStub) GetMetric(c *gin.Context)      { h.record(c, "GetMetric") }
@@ -79,6 +80,12 @@ func TestRouterRoutes(t *testing.T) {
 			method:     http.MethodPost,
 			target:     "/update/",
 			wantMethod: "UpdateMetricV2",
+		},
+		{
+			name:       "routes a batch update",
+			method:     http.MethodPost,
+			target:     "/updates/",
+			wantMethod: "UpdateMetrics",
 		},
 		{
 			name:       "routes a path update",

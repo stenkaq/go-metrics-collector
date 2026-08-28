@@ -2,9 +2,9 @@ package agent
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
-	"maps"
 	"math/rand/v2"
 	"net/http"
 	"runtime"
@@ -72,32 +72,80 @@ func (h *HTTPAgent) CollectMetrics() {
 	h.MValues.Counters["PollCount"]++
 }
 
-func (h *HTTPAgent) sendMetric(name string, mType string, value any) error {
+var errBatchUnsupported = errors.New("сервер не поддерживает батчи")
+
+func (h *HTTPAgent) GetBatch() []models.Metrics {
+	h.MValues.mu.RLock()
+	defer h.MValues.mu.RUnlock()
+
+	metrics := make([]models.Metrics, 0, len(h.MValues.Counters)+len(h.MValues.Gauges))
+
+	for name, value := range h.MValues.Counters {
+		delta := value
+		metrics = append(metrics, models.Metrics{
+			ID:    name,
+			MType: models.Counter,
+			Delta: &delta,
+		})
+	}
+
+	for name, value := range h.MValues.Gauges {
+		gauge := value
+		metrics = append(metrics, models.Metrics{
+			ID:    name,
+			MType: models.Gauge,
+			Value: &gauge,
+		})
+	}
+
+	return metrics
+}
+
+func (h *HTTPAgent) sendBatch(metrics []models.Metrics) error {
+	if h.HTTPClient == nil {
+		return fmt.Errorf("HTTP-клиент не настроен")
+	}
+
+	url := fmt.Sprintf("%s/updates/", h.BaseURL)
+
+	parsedBody, err := json.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("запрос %s: %w", url, err)
+	}
+
+	response, err := h.HTTPClient.R().
+		SetHeader("Content-Type", "application/json").
+		SetBody(parsedBody).
+		Post(url)
+	if err != nil {
+		return fmt.Errorf("запрос %s: %w", url, err)
+	}
+
+	status := response.StatusCode()
+
+	if status == http.StatusOK {
+		return nil
+	} else {
+		return fmt.Errorf("ответ %s: status=%s body=%q", url, response.Status(), response.String())
+	}
+}
+
+func (h *HTTPAgent) sendMetric(metric models.Metrics) error {
 	if h.HTTPClient == nil {
 		return fmt.Errorf("HTTP-клиент не настроен")
 	}
 
 	url := fmt.Sprintf("%s/update/", h.BaseURL)
-	body := models.Metrics{
-		MType: mType,
-		ID:    name,
-	}
 
-	switch mType {
-	case models.Counter:
-		v := value.(int64)
-		body.Delta = &v
-	case models.Gauge:
-		v := value.(float64)
-		body.Value = &v
-	}
-
-	parsedBody, err := json.Marshal(body)
+	parsedBody, err := json.Marshal(metric)
 	if err != nil {
 		return fmt.Errorf("запрос %s: %w", url, err)
 	}
-	response, err := h.HTTPClient.R().SetHeader("Content-Type", "application/json").SetBody(parsedBody).Post(url)
 
+	response, err := h.HTTPClient.R().
+		SetHeader("Content-Type", "application/json").
+		SetBody(parsedBody).
+		Post(url)
 	if err != nil {
 		return fmt.Errorf("запрос %s: %w", url, err)
 	}
@@ -110,24 +158,25 @@ func (h *HTTPAgent) sendMetric(name string, mType string, value any) error {
 }
 
 func (h *HTTPAgent) SendMetrics() {
-	h.MValues.mu.RLock()
+	metrics := h.GetBatch()
 
-	gaugeMetrics := maps.Clone(h.MValues.Gauges)
-	counterMetrics := maps.Clone(h.MValues.Counters)
-
-	h.MValues.mu.RUnlock()
-
-	for name, value := range counterMetrics {
-		err := h.sendMetric(name, models.Counter, value)
-		if err != nil {
-			log.Printf("Ошибка отправки метрики %s: %v", name, err)
-		}
+	if len(metrics) == 0 {
+		return
 	}
 
-	for name, value := range gaugeMetrics {
-		err := h.sendMetric(name, models.Gauge, value)
-		if err != nil {
-			log.Printf("Ошибка отправки метрики %s: %v", name, err)
+	err := h.sendBatch(metrics)
+	if err == nil {
+		return
+	}
+
+	if !errors.Is(err, errBatchUnsupported) {
+		log.Printf("Ошибка отправки батча метрик: %v", err)
+		return
+	}
+
+	for _, metric := range metrics {
+		if err := h.sendMetric(metric); err != nil {
+			log.Printf("Ошибка отправки метрики %s: %v", metric.ID, err)
 		}
 	}
 }

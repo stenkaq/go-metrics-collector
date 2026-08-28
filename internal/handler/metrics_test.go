@@ -35,16 +35,31 @@ type metricsServiceStub struct {
 	metric  models.Metrics
 	exists  bool
 	metrics []models.Metrics
+
+	// updateMetricsErr позволяет проверить, что хендлер отдаёт 500,
+	// когда сервис не смог сохранить батч.
+	updateMetricsErr error
 }
 
 type serviceCalls struct {
-	values []serviceCall
-	gets   []serviceCall
+	values  []serviceCall
+	gets    []serviceCall
+	batches [][]models.Metrics
 }
 
 func newMetricsServiceStub() (*metricsServiceStub, *serviceCalls) {
 	calls := &serviceCalls{}
 	return &metricsServiceStub{calls: calls}, calls
+}
+
+func (s *metricsServiceStub) UpdateMetrics(_ context.Context, metrics []models.Metrics) error {
+	if s.updateMetricsErr != nil {
+		return s.updateMetricsErr
+	}
+
+	s.calls.batches = append(s.calls.batches, metrics)
+
+	return nil
 }
 
 func (s *metricsServiceStub) UpdateCounterMetricValue(_ context.Context, params service.UpdateCounterMetricValueParams) error {

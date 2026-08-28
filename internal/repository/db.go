@@ -43,6 +43,45 @@ func NewPgMetricsRepository(pool *pgxpool.Pool) MetricsRepository {
 	return &pgMetricsRepository{pool: pool}
 }
 
+func (r *pgMetricsRepository) SaveBatch(ctx context.Context, metrics []models.Metrics) error {
+	if len(metrics) == 0 {
+		return nil
+	}
+
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("не удалось начать транзакцию: %w", err)
+	}
+
+	defer tx.Rollback(ctx)
+
+	batch := &pgx.Batch{}
+
+	for _, metric := range metrics {
+		batch.Queue(`INSERT INTO metrics (id, type, delta, value)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (id, type) DO UPDATE
+			SET delta = CASE WHEN metrics.type = 'counter'
+			                 THEN metrics.delta + EXCLUDED.delta
+			                 ELSE EXCLUDED.delta END,
+			    value = EXCLUDED.value`, metric.ID, metric.MType, metric.Delta, metric.Value)
+	}
+
+	res := tx.SendBatch(ctx, batch)
+	for i := range metrics {
+		if _, err := res.Exec(); err != nil {
+			_ = res.Close()
+			return fmt.Errorf("не удалось сохранить метрику %q: %w", metrics[i].ID, err)
+		}
+	}
+
+	if err := res.Close(); err != nil {
+		return fmt.Errorf("не удалось выполнить batch: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
 func (r *pgMetricsRepository) Save(ctx context.Context, metric models.Metrics) error {
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO metrics (id, type, delta, value)
@@ -53,6 +92,19 @@ func (r *pgMetricsRepository) Save(ctx context.Context, metric models.Metrics) e
 		metric.ID, metric.MType, metric.Delta, metric.Value)
 	if err != nil {
 		return fmt.Errorf("не удалось сохранить метрику %q: %w", metric.ID, err)
+	}
+
+	return nil
+}
+
+func (r *pgMetricsRepository) UpdateGauge(ctx context.Context, name string, value float64) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO metrics (id, type, delta, value)
+		VALUES ($1, $2, NULL, $3)
+		ON CONFLICT (id, type) DO UPDATE
+		SET value = EXCLUDED.value`, name, models.Gauge, value)
+	if err != nil {
+		return fmt.Errorf("не удалось сохранить gauge %q: %w", name, err)
 	}
 
 	return nil

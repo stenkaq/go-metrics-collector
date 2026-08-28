@@ -28,6 +28,23 @@ func (r *metricsRepositoryStub) Save(_ context.Context, metric models.Metrics) e
 	return nil
 }
 
+func (r *metricsRepositoryStub) SaveBatch(_ context.Context, metrics []models.Metrics) error {
+	for _, metric := range metrics {
+		key := r.key(metric.MType, metric.ID)
+
+		if metric.MType == models.Counter {
+			if stored, exists := r.metrics[key]; exists && stored.Delta != nil && metric.Delta != nil {
+				delta := *stored.Delta + *metric.Delta
+				metric.Delta = &delta
+			}
+		}
+
+		r.metrics[key] = metric
+	}
+
+	return nil
+}
+
 func (r *metricsRepositoryStub) Get(_ context.Context, mType string, name string) (models.Metrics, bool, error) {
 	metric, exists := r.metrics[r.key(mType, name)]
 	return metric, exists, nil
@@ -40,6 +57,16 @@ func (r *metricsRepositoryStub) GetMetrics(_ context.Context) ([]models.Metrics,
 	}
 
 	return metrics, nil
+}
+
+func (r *metricsRepositoryStub) UpdateGauge(_ context.Context, name string, value float64) error {
+	r.metrics[r.key(models.Gauge, name)] = models.Metrics{
+		ID:    name,
+		MType: models.Gauge,
+		Value: &value,
+	}
+
+	return nil
 }
 
 func (r *metricsRepositoryStub) IncrementCounter(_ context.Context, name string, delta int64) error {
