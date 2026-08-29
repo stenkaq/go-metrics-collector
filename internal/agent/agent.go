@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"runtime"
 	"sync"
+	"time"
 
 	models "go-metrics-collector/internal/model"
 
@@ -24,6 +25,19 @@ type HTTPAgent struct {
 	HTTPClient *resty.Client
 	BaseURL    string
 	MValues    MetricsValues
+}
+
+type retriableError struct {
+	StatusCode int
+	Err        error
+}
+
+func (e *retriableError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *retriableError) Unwrap() error {
+	return e.Err
 }
 
 type MetricsValues struct {
@@ -118,7 +132,7 @@ func (h *HTTPAgent) sendBatch(metrics []models.Metrics) error {
 		SetBody(parsedBody).
 		Post(url)
 	if err != nil {
-		return fmt.Errorf("запрос %s: %w", url, err)
+		return &retriableError{Err: fmt.Errorf("запрос %s: %w", url, err)}
 	}
 
 	status := response.StatusCode()
@@ -129,6 +143,13 @@ func (h *HTTPAgent) sendBatch(metrics []models.Metrics) error {
 
 	if status == http.StatusNotFound {
 		return fmt.Errorf("ответ %s: status=%s body=%q: %w", url, response.Status(), response.String(), errBatchUnsupported)
+	}
+
+	if isRetriable(status) {
+		return &retriableError{
+			StatusCode: status,
+			Err:        fmt.Errorf("ответ %s: status=%s body=%q", url, response.Status(), response.String()),
+		}
 	}
 
 	return fmt.Errorf("ответ %s: status=%s body=%q", url, response.Status(), response.String())
@@ -151,14 +172,23 @@ func (h *HTTPAgent) sendMetric(metric models.Metrics) error {
 		SetBody(parsedBody).
 		Post(url)
 	if err != nil {
-		return fmt.Errorf("запрос %s: %w", url, err)
+		return &retriableError{Err: fmt.Errorf("запрос %s: %w", url, err)}
 	}
 
-	if response.StatusCode() != http.StatusOK {
-		return fmt.Errorf("ответ %s: status=%s body=%q", url, response.Status(), response.String())
+	status := response.StatusCode()
+
+	if status == http.StatusOK {
+		return nil
 	}
 
-	return nil
+	if isRetriable(status) {
+		return &retriableError{
+			StatusCode: status,
+			Err:        fmt.Errorf("ответ %s: status=%s body=%q", url, response.Status(), response.String()),
+		}
+	}
+
+	return fmt.Errorf("ответ %s: status=%s body=%q", url, response.Status(), response.String())
 }
 
 func (h *HTTPAgent) SendMetrics() {
@@ -168,7 +198,9 @@ func (h *HTTPAgent) SendMetrics() {
 		return
 	}
 
-	err := h.sendBatch(metrics)
+	err := withRetry(func() error {
+		return h.sendBatch(metrics)
+	})
 	if err == nil {
 		return
 	}
@@ -179,8 +211,33 @@ func (h *HTTPAgent) SendMetrics() {
 	}
 
 	for _, metric := range metrics {
-		if err := h.sendMetric(metric); err != nil {
+		if err := withRetry(func() error {
+			return h.sendMetric(metric)
+		}); err != nil {
 			log.Printf("Ошибка отправки метрики %s: %v", metric.ID, err)
 		}
 	}
+}
+
+func withRetry(f func() error) error {
+	delay := 1 * time.Second
+
+	err := f()
+
+	for range 3 {
+		var re *retriableError
+		if err == nil || !errors.As(err, &re) {
+			return err
+		}
+
+		time.Sleep(delay)
+		err = f()
+		delay += 2 * time.Second
+	}
+
+	return err
+}
+
+func isRetriable(status int) bool {
+	return status >= http.StatusInternalServerError || status == http.StatusTooManyRequests
 }

@@ -29,10 +29,12 @@ func (p *dbRepository) Ping(ctx context.Context) error {
 		return errors.New("подключение к БД отсутствует")
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	return withRetry(ctx, func() error {
+		pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
 
-	return p.pool.Ping(ctx)
+		return p.pool.Ping(pingCtx)
+	})
 }
 
 type pgMetricsRepository struct {
@@ -48,6 +50,12 @@ func (r *pgMetricsRepository) SaveBatch(ctx context.Context, metrics []models.Me
 		return nil
 	}
 
+	return withRetry(ctx, func() error {
+		return r.saveBatch(ctx, metrics)
+	})
+}
+
+func (r *pgMetricsRepository) saveBatch(ctx context.Context, metrics []models.Metrics) error {
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("не удалось начать транзакцию: %w", err)
@@ -83,13 +91,17 @@ func (r *pgMetricsRepository) SaveBatch(ctx context.Context, metrics []models.Me
 }
 
 func (r *pgMetricsRepository) Save(ctx context.Context, metric models.Metrics) error {
-	_, err := r.pool.Exec(ctx,
-		`INSERT INTO metrics (id, type, delta, value)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (id, type) DO UPDATE
-		SET delta = EXCLUDED.delta,
-	    value = EXCLUDED.value`,
-		metric.ID, metric.MType, metric.Delta, metric.Value)
+	err := withRetry(ctx, func() error {
+		_, err := r.pool.Exec(ctx,
+			`INSERT INTO metrics (id, type, delta, value)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (id, type) DO UPDATE
+			SET delta = EXCLUDED.delta,
+		    value = EXCLUDED.value`,
+			metric.ID, metric.MType, metric.Delta, metric.Value)
+
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("не удалось сохранить метрику %q: %w", metric.ID, err)
 	}
@@ -98,11 +110,15 @@ func (r *pgMetricsRepository) Save(ctx context.Context, metric models.Metrics) e
 }
 
 func (r *pgMetricsRepository) UpdateGauge(ctx context.Context, name string, value float64) error {
-	_, err := r.pool.Exec(ctx,
-		`INSERT INTO metrics (id, type, delta, value)
-		VALUES ($1, $2, NULL, $3)
-		ON CONFLICT (id, type) DO UPDATE
-		SET value = EXCLUDED.value`, name, models.Gauge, value)
+	err := withRetry(ctx, func() error {
+		_, err := r.pool.Exec(ctx,
+			`INSERT INTO metrics (id, type, delta, value)
+			VALUES ($1, $2, NULL, $3)
+			ON CONFLICT (id, type) DO UPDATE
+			SET value = EXCLUDED.value`, name, models.Gauge, value)
+
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("не удалось сохранить gauge %q: %w", name, err)
 	}
@@ -111,11 +127,15 @@ func (r *pgMetricsRepository) UpdateGauge(ctx context.Context, name string, valu
 }
 
 func (r *pgMetricsRepository) IncrementCounter(ctx context.Context, name string, delta int64) error {
-	_, err := r.pool.Exec(ctx,
-		`INSERT INTO metrics (id, type, delta, value)
-		VALUES ($1, $2, $3, NULL)
-		ON CONFLICT (id, type) DO UPDATE
-		SET delta = metrics.delta + EXCLUDED.delta`, name, models.Counter, delta)
+	err := withRetry(ctx, func() error {
+		_, err := r.pool.Exec(ctx,
+			`INSERT INTO metrics (id, type, delta, value)
+			VALUES ($1, $2, $3, NULL)
+			ON CONFLICT (id, type) DO UPDATE
+			SET delta = metrics.delta + EXCLUDED.delta`, name, models.Counter, delta)
+
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("не удалось увеличить счётчик %q: %w", name, err)
 	}
@@ -126,11 +146,15 @@ func (r *pgMetricsRepository) IncrementCounter(ctx context.Context, name string,
 func (r *pgMetricsRepository) Get(ctx context.Context, mType string, name string) (models.Metrics, bool, error) {
 	var metric models.Metrics
 
-	err := r.pool.QueryRow(ctx,
-		`SELECT id, type, delta, value
-		FROM metrics
-		WHERE id = $1 AND type = $2`, name, mType).
-		Scan(&metric.ID, &metric.MType, &metric.Delta, &metric.Value)
+	err := withRetry(ctx, func() error {
+		metric = models.Metrics{}
+
+		return r.pool.QueryRow(ctx,
+			`SELECT id, type, delta, value
+			FROM metrics
+			WHERE id = $1 AND type = $2`, name, mType).
+			Scan(&metric.ID, &metric.MType, &metric.Delta, &metric.Value)
+	})
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return models.Metrics{}, false, nil
@@ -144,6 +168,22 @@ func (r *pgMetricsRepository) Get(ctx context.Context, mType string, name string
 }
 
 func (r *pgMetricsRepository) GetMetrics(ctx context.Context) ([]models.Metrics, error) {
+	var metrics []models.Metrics
+
+	err := withRetry(ctx, func() error {
+		var err error
+		metrics, err = r.getMetrics(ctx)
+
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return metrics, nil
+}
+
+func (r *pgMetricsRepository) getMetrics(ctx context.Context) ([]models.Metrics, error) {
 	rows, err := r.pool.Query(ctx, `SELECT id, type, delta, value FROM metrics`)
 	if err != nil {
 		return nil, fmt.Errorf("не удалось прочитать метрики: %w", err)
