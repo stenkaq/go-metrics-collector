@@ -16,6 +16,8 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
+const maxRetries = 3
+
 type Agent interface {
 	CollectMetrics()
 	SendMetrics()
@@ -224,7 +226,7 @@ func withRetry(f func() error) error {
 
 	err := f()
 
-	for range 3 {
+	for range maxRetries {
 		var re *retriableError
 		if err == nil || !errors.As(err, &re) {
 			return err
