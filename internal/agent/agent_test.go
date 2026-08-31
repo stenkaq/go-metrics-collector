@@ -2,6 +2,7 @@ package agent
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -123,7 +124,7 @@ func TestHTTPAgentSendMetricsSendsBatch(t *testing.T) {
 		}
 	})
 
-	agent.SendMetrics()
+	agent.SendMetrics(context.Background())
 
 	if len(paths) != 1 {
 		t.Fatalf("запросов = %d, want 1 — метрики должны уходить одним батчем", len(paths))
@@ -164,7 +165,7 @@ func TestHTTPAgentSendMetricsSkipsEmptyBatch(t *testing.T) {
 	agent.MValues.Counters = map[string]int64{}
 	agent.MValues.Gauges = map[string]float64{}
 
-	agent.SendMetrics()
+	agent.SendMetrics(context.Background())
 
 	if requests != 0 {
 		t.Errorf("запросов = %d, want 0 — пустой батч отправлять не нужно", requests)
@@ -189,7 +190,7 @@ func TestHTTPAgentSendMetricsFallsBackToSingleUpdates(t *testing.T) {
 		}
 	})
 
-	agent.SendMetrics()
+	agent.SendMetrics(context.Background())
 
 	if len(paths) != 3 {
 		t.Fatalf("запросов = %d, want 3 (батч + две поштучные отправки): %v", len(paths), paths)
@@ -221,7 +222,7 @@ func TestHTTPAgentSendMetricsIsRaceFree(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			agent.SendMetrics()
+			agent.SendMetrics(context.Background())
 		}()
 	}
 

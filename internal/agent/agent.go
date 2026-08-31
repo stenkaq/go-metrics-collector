@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,24 +10,24 @@ import (
 	"net/http"
 	"runtime"
 	"sync"
-	"time"
+	"sync/atomic"
 
 	models "go-metrics-collector/internal/model"
+	"go-metrics-collector/internal/retry"
 
 	"github.com/go-resty/resty/v2"
 )
 
-const maxRetries = 3
-
 type Agent interface {
 	CollectMetrics()
-	SendMetrics()
+	SendMetrics(ctx context.Context)
 }
 
 type HTTPAgent struct {
-	HTTPClient *resty.Client
-	BaseURL    string
-	MValues    MetricsValues
+	HTTPClient       *resty.Client
+	BaseURL          string
+	MValues          MetricsValues
+	batchUnsupported atomic.Bool
 }
 
 type retriableError struct {
@@ -117,129 +118,86 @@ func (h *HTTPAgent) GetBatch() []models.Metrics {
 	return metrics
 }
 
-func (h *HTTPAgent) sendBatch(metrics []models.Metrics) error {
+func (h *HTTPAgent) post(ctx context.Context, path string, payload any) (int, error) {
 	if h.HTTPClient == nil {
-		return fmt.Errorf("HTTP-клиент не настроен")
+		return 0, fmt.Errorf("HTTP-клиент не настроен")
 	}
 
-	url := fmt.Sprintf("%s/updates/", h.BaseURL)
+	url := h.BaseURL + path
 
-	parsedBody, err := json.Marshal(metrics)
+	parsedBody, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("запрос %s: %w", url, err)
+		return 0, fmt.Errorf("запрос %s: %w", url, err)
 	}
 
 	response, err := h.HTTPClient.R().
+		SetContext(ctx).
 		SetHeader("Content-Type", "application/json").
 		SetBody(parsedBody).
 		Post(url)
 	if err != nil {
-		return &retriableError{Err: fmt.Errorf("запрос %s: %w", url, err)}
+		return 0, &retriableError{Err: fmt.Errorf("запрос %s: %w", url, err)}
 	}
 
 	status := response.StatusCode()
 
 	if status == http.StatusOK {
-		return nil
+		return status, nil
 	}
 
-	if status == http.StatusNotFound {
-		return fmt.Errorf("ответ %s: status=%s body=%q: %w", url, response.Status(), response.String(), errBatchUnsupported)
+	respErr := fmt.Errorf("ответ %s: status=%s body=%q", url, response.Status(), response.String())
+
+	if isRetriableStatus(status) {
+		return status, &retriableError{StatusCode: status, Err: respErr}
 	}
 
-	if isRetriable(status) {
-		return &retriableError{
-			StatusCode: status,
-			Err:        fmt.Errorf("ответ %s: status=%s body=%q", url, response.Status(), response.String()),
-		}
-	}
-
-	return fmt.Errorf("ответ %s: status=%s body=%q", url, response.Status(), response.String())
+	return status, respErr
 }
 
-func (h *HTTPAgent) sendMetric(metric models.Metrics) error {
-	if h.HTTPClient == nil {
-		return fmt.Errorf("HTTP-клиент не настроен")
+func (h *HTTPAgent) sendBatch(ctx context.Context, metrics []models.Metrics) error {
+	status, err := h.post(ctx, "/updates/", metrics)
+
+	if err != nil && status == http.StatusNotFound {
+		return fmt.Errorf("%w: %w", err, errBatchUnsupported)
 	}
 
-	url := fmt.Sprintf("%s/update/", h.BaseURL)
-
-	parsedBody, err := json.Marshal(metric)
-	if err != nil {
-		return fmt.Errorf("запрос %s: %w", url, err)
-	}
-
-	response, err := h.HTTPClient.R().
-		SetHeader("Content-Type", "application/json").
-		SetBody(parsedBody).
-		Post(url)
-	if err != nil {
-		return &retriableError{Err: fmt.Errorf("запрос %s: %w", url, err)}
-	}
-
-	status := response.StatusCode()
-
-	if status == http.StatusOK {
-		return nil
-	}
-
-	if isRetriable(status) {
-		return &retriableError{
-			StatusCode: status,
-			Err:        fmt.Errorf("ответ %s: status=%s body=%q", url, response.Status(), response.String()),
-		}
-	}
-
-	return fmt.Errorf("ответ %s: status=%s body=%q", url, response.Status(), response.String())
+	return err
 }
 
-func (h *HTTPAgent) SendMetrics() {
+func (h *HTTPAgent) sendMetric(ctx context.Context, metric models.Metrics) error {
+	_, err := h.post(ctx, "/update/", metric)
+
+	return err
+}
+
+func (h *HTTPAgent) SendMetrics(ctx context.Context) {
 	metrics := h.GetBatch()
 
 	if len(metrics) == 0 {
 		return
 	}
 
-	err := withRetry(func() error {
-		return h.sendBatch(metrics)
-	})
-	if err == nil {
-		return
-	}
+	if !h.batchUnsupported.Load() {
+		err := retry.Do(ctx, isRetriableError, func() error {
+			return h.sendBatch(ctx, metrics)
+		})
+		if err == nil {
+			return
+		}
 
-	if !errors.Is(err, errBatchUnsupported) {
-		log.Printf("Ошибка отправки батча метрик: %v", err)
-		return
+		if !errors.Is(err, errBatchUnsupported) {
+			log.Printf("Ошибка отправки батча метрик: %v", err)
+			return
+		}
+
+		h.batchUnsupported.Store(true)
 	}
 
 	for _, metric := range metrics {
-		if err := withRetry(func() error {
-			return h.sendMetric(metric)
+		if err := retry.Do(ctx, isRetriableError, func() error {
+			return h.sendMetric(ctx, metric)
 		}); err != nil {
 			log.Printf("Ошибка отправки метрики %s: %v", metric.ID, err)
 		}
 	}
-}
-
-func withRetry(f func() error) error {
-	delay := 1 * time.Second
-
-	err := f()
-
-	for range maxRetries {
-		var re *retriableError
-		if err == nil || !errors.As(err, &re) {
-			return err
-		}
-
-		time.Sleep(delay)
-		err = f()
-		delay += 2 * time.Second
-	}
-
-	return err
-}
-
-func isRetriable(status int) bool {
-	return status >= http.StatusInternalServerError || status == http.StatusTooManyRequests
 }
