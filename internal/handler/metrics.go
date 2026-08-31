@@ -42,7 +42,7 @@ func (h *metricsHandler) UpdateMetrics(c *gin.Context) {
 	}
 
 	if err := validateMetrics(metrics); err != nil {
-		http.Error(c.Writer, err.Error(), http.StatusInternalServerError)
+		http.Error(c.Writer, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -50,8 +50,6 @@ func (h *metricsHandler) UpdateMetrics(c *gin.Context) {
 		http.Error(c.Writer, "Не удалось сохранить метрики", http.StatusInternalServerError)
 		return
 	}
-
-	c.Header("Content-Type", "text/plain")
 }
 
 func (h *metricsHandler) UpdateMetricV2(c *gin.Context) {
@@ -100,8 +98,6 @@ func (h *metricsHandler) UpdateMetricV2(c *gin.Context) {
 		http.Error(c.Writer, "Неизвестный тип метрики", http.StatusBadRequest)
 		return
 	}
-
-	c.Header("Content-Type", "text/plain")
 }
 
 func (h *metricsHandler) UpdateMetric(c *gin.Context) {
@@ -149,8 +145,6 @@ func (h *metricsHandler) UpdateMetric(c *gin.Context) {
 		http.Error(c.Writer, "Неизвестный тип метрики", http.StatusBadRequest)
 		return
 	}
-
-	c.Header("Content-Type", "text/plain")
 }
 
 func (h *metricsHandler) GetMetricV2(c *gin.Context) {
