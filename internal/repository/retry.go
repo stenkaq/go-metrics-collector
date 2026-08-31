@@ -5,13 +5,10 @@ import (
 	"errors"
 	"net"
 	"syscall"
-	"time"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 )
-
-const maxRetries = 3
 
 func isRetriable(err error) bool {
 	if err == nil {
@@ -34,26 +31,4 @@ func isRetriable(err error) bool {
 	var netErr net.Error
 
 	return errors.As(err, &netErr)
-}
-
-func withRetry(ctx context.Context, f func() error) error {
-	err := f()
-	delay := 1 * time.Second
-
-	for range maxRetries {
-		if !isRetriable(err) {
-			return err
-		}
-
-		select {
-		case <-time.After(delay):
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-
-		err = f()
-		delay += 2 * time.Second
-	}
-
-	return err
 }

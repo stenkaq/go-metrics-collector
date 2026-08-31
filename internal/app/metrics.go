@@ -47,6 +47,11 @@ func NewMetricsApp(ctx context.Context, cfg config.ServerConfig) (*App, error) {
 			return nil, fmt.Errorf("не удалось создать пул подключений: %w", err)
 		}
 
+		if err := pool.Ping(ctx); err != nil {
+			pool.Close()
+			return nil, fmt.Errorf("не удалось подключиться к БД: %w", err)
+		}
+
 		if err := repository.Migrate(cfg.DatabaseDSN); err != nil {
 			pool.Close()
 			return nil, fmt.Errorf("не удалось применить миграции: %w", err)

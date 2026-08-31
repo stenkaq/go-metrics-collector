@@ -7,6 +7,7 @@ import (
 	"time"
 
 	models "go-metrics-collector/internal/model"
+	"go-metrics-collector/internal/retry"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -29,7 +30,7 @@ func (p *dbRepository) Ping(ctx context.Context) error {
 		return errors.New("подключение к БД отсутствует")
 	}
 
-	return withRetry(ctx, func() error {
+	return retry.Do(ctx, isRetriable, func() error {
 		pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 
@@ -50,7 +51,7 @@ func (r *pgMetricsRepository) SaveBatch(ctx context.Context, metrics []models.Me
 		return nil
 	}
 
-	return withRetry(ctx, func() error {
+	return retry.Do(ctx, isRetriable, func() error {
 		return r.saveBatch(ctx, metrics)
 	})
 }
@@ -91,7 +92,7 @@ func (r *pgMetricsRepository) saveBatch(ctx context.Context, metrics []models.Me
 }
 
 func (r *pgMetricsRepository) Save(ctx context.Context, metric models.Metrics) error {
-	err := withRetry(ctx, func() error {
+	err := retry.Do(ctx, isRetriable, func() error {
 		_, err := r.pool.Exec(ctx,
 			`INSERT INTO metrics (id, type, delta, value)
 			VALUES ($1, $2, $3, $4)
@@ -110,7 +111,7 @@ func (r *pgMetricsRepository) Save(ctx context.Context, metric models.Metrics) e
 }
 
 func (r *pgMetricsRepository) UpdateGauge(ctx context.Context, name string, value float64) error {
-	err := withRetry(ctx, func() error {
+	err := retry.Do(ctx, isRetriable, func() error {
 		_, err := r.pool.Exec(ctx,
 			`INSERT INTO metrics (id, type, delta, value)
 			VALUES ($1, $2, NULL, $3)
@@ -127,7 +128,7 @@ func (r *pgMetricsRepository) UpdateGauge(ctx context.Context, name string, valu
 }
 
 func (r *pgMetricsRepository) IncrementCounter(ctx context.Context, name string, delta int64) error {
-	err := withRetry(ctx, func() error {
+	err := retry.Do(ctx, isRetriable, func() error {
 		_, err := r.pool.Exec(ctx,
 			`INSERT INTO metrics (id, type, delta, value)
 			VALUES ($1, $2, $3, NULL)
@@ -146,7 +147,7 @@ func (r *pgMetricsRepository) IncrementCounter(ctx context.Context, name string,
 func (r *pgMetricsRepository) Get(ctx context.Context, mType string, name string) (models.Metrics, bool, error) {
 	var metric models.Metrics
 
-	err := withRetry(ctx, func() error {
+	err := retry.Do(ctx, isRetriable, func() error {
 		metric = models.Metrics{}
 
 		return r.pool.QueryRow(ctx,
@@ -170,7 +171,7 @@ func (r *pgMetricsRepository) Get(ctx context.Context, mType string, name string
 func (r *pgMetricsRepository) GetMetrics(ctx context.Context) ([]models.Metrics, error) {
 	var metrics []models.Metrics
 
-	err := withRetry(ctx, func() error {
+	err := retry.Do(ctx, isRetriable, func() error {
 		var err error
 		metrics, err = r.getMetrics(ctx)
 
