@@ -5,7 +5,7 @@ CREATE TABLE metrics (
     value DOUBLE PRECISION,
     PRIMARY KEY (id, type),
     CONSTRAINT metrics_value_check CHECK (
-        (type = 'counter' AND delta IS NOT NULL and value IS NULL) OR
-        (type = 'gauge' AND delta IS NULL and value IS NOT NULL)
+        (type = 'counter' AND delta IS NOT NULL AND value IS NULL) OR
+        (type = 'gauge' AND delta IS NULL AND value IS NOT NULL)
     )
-)
+);
