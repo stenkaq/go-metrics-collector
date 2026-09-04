@@ -13,6 +13,7 @@ import (
 
 type Handlers struct {
 	Metrics handler.MetricsHandler
+	DB      handler.DBHandler
 }
 
 func New(handlers Handlers, logger *zap.Logger, updateMiddlewares ...gin.HandlerFunc) *gin.Engine {
@@ -30,12 +31,16 @@ func New(handlers Handlers, logger *zap.Logger, updateMiddlewares ...gin.Handler
 		rejectUncleanPath(),
 	)
 
-	updates := router.Group("/update", updateMiddlewares...)
-	updates.POST("/", handlers.Metrics.UpdateMetricV2)
-	updates.POST("/:type/:name/:value", handlers.Metrics.UpdateMetric)
+	update := router.Group("/update", updateMiddlewares...)
+	update.POST("/", handlers.Metrics.UpdateMetricV2)
+	update.POST("/:type/:name/:value", handlers.Metrics.UpdateMetric)
+
+	updates := router.Group("/updates", updateMiddlewares...)
+	updates.POST("/", handlers.Metrics.UpdateMetrics)
 
 	router.POST("/value/", handlers.Metrics.GetMetricV2)
 	router.GET("/value/:type/:name", handlers.Metrics.GetMetric)
+	router.GET("/ping", handlers.DB.Ping)
 	router.GET("/", handlers.Metrics.GetMetrics)
 
 	return router

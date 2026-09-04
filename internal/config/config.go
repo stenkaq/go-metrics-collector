@@ -25,6 +25,7 @@ type ServerEnvConfig struct {
 	StoreInterval   int    `env:"STORE_INTERVAL"`
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 	Restore         bool   `env:"RESTORE"`
+	DatabaseDSN     string `env:"DATABASE_DSN"`
 }
 
 type ServerConfig struct {
@@ -32,6 +33,7 @@ type ServerConfig struct {
 	StoreInterval   time.Duration
 	FileStoragePath string
 	Restore         bool
+	DatabaseDSN     string
 }
 
 func ParseAgentConfig() AgentConfig {
@@ -60,6 +62,8 @@ func ParseServerConfig() ServerConfig {
 	flag.IntVar(&cfg.StoreInterval, "i", 300, "интервал времени в секундах, по истечении которого текущие показания сервера сохраняются на диск")
 	flag.StringVar(&cfg.FileStoragePath, "f", "/tmp/log.json", "путь до файла, куда сохраняются текущие значения")
 	flag.BoolVar(&cfg.Restore, "r", true, "определяет, загружать ли ранее сохранённые значения из указанного файла при старте сервера.")
+	flag.StringVar(&cfg.DatabaseDSN, "d", "", "строка подключения к БД")
+
 	flag.Parse()
 
 	if err := env.Parse(&cfg); err != nil {
@@ -71,5 +75,6 @@ func ParseServerConfig() ServerConfig {
 		FileStoragePath: cfg.FileStoragePath,
 		StoreInterval:   time.Duration(cfg.StoreInterval) * time.Second,
 		Restore:         cfg.Restore,
+		DatabaseDSN:     cfg.DatabaseDSN,
 	}
 }

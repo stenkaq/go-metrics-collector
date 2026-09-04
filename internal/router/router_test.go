@@ -33,17 +33,29 @@ func (h *metricsHandlerStub) record(c *gin.Context, method string) {
 	io.WriteString(c.Writer, method)
 }
 
+func (h *metricsHandlerStub) UpdateMetrics(c *gin.Context)  { h.record(c, "UpdateMetrics") }
 func (h *metricsHandlerStub) UpdateMetric(c *gin.Context)   { h.record(c, "UpdateMetric") }
 func (h *metricsHandlerStub) UpdateMetricV2(c *gin.Context) { h.record(c, "UpdateMetricV2") }
 func (h *metricsHandlerStub) GetMetric(c *gin.Context)      { h.record(c, "GetMetric") }
 func (h *metricsHandlerStub) GetMetricV2(c *gin.Context)    { h.record(c, "GetMetricV2") }
 func (h *metricsHandlerStub) GetMetrics(c *gin.Context)     { h.record(c, "GetMetrics") }
 
-func newTestRouter(updateMiddlewares ...gin.HandlerFunc) (*gin.Engine, *metricsHandlerStub) {
-	metrics := &metricsHandlerStub{}
-	engine := router.New(router.Handlers{Metrics: metrics}, zap.NewNop(), updateMiddlewares...)
+// dbHandlerStub отвечает на /ping тем же способом, что и остальные заглушки.
+type dbHandlerStub struct {
+	calls []handlerCall
+}
 
-	return engine, metrics
+func (h *dbHandlerStub) Ping(c *gin.Context) {
+	h.calls = append(h.calls, handlerCall{method: "Ping", params: c.Params})
+	io.WriteString(c.Writer, "Ping")
+}
+
+func newTestRouter(updateMiddlewares ...gin.HandlerFunc) (*gin.Engine, *metricsHandlerStub, *dbHandlerStub) {
+	metrics := &metricsHandlerStub{}
+	db := &dbHandlerStub{}
+	engine := router.New(router.Handlers{Metrics: metrics, DB: db}, zap.NewNop(), updateMiddlewares...)
+
+	return engine, metrics, db
 }
 
 func doRequest(t *testing.T, engine *gin.Engine, method, target string, body io.Reader) *httptest.ResponseRecorder {
@@ -68,6 +80,12 @@ func TestRouterRoutes(t *testing.T) {
 			method:     http.MethodPost,
 			target:     "/update/",
 			wantMethod: "UpdateMetricV2",
+		},
+		{
+			name:       "routes a batch update",
+			method:     http.MethodPost,
+			target:     "/updates/",
+			wantMethod: "UpdateMetrics",
 		},
 		{
 			name:       "routes a path update",
@@ -99,7 +117,7 @@ func TestRouterRoutes(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			engine, metrics := newTestRouter()
+			engine, metrics, _ := newTestRouter()
 
 			recorder := doRequest(t, engine, test.method, test.target, nil)
 
@@ -128,6 +146,22 @@ func TestRouterRoutes(t *testing.T) {
 	}
 }
 
+func TestRouterRoutesPingToDBHandler(t *testing.T) {
+	engine, metrics, db := newTestRouter()
+
+	recorder := doRequest(t, engine, http.MethodGet, "/ping", nil)
+
+	if recorder.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	if len(db.calls) != 1 {
+		t.Fatalf("вызовов DB хендлера = %d, want 1", len(db.calls))
+	}
+	if len(metrics.calls) != 0 {
+		t.Errorf("вызовов хендлера метрик = %d, want 0", len(metrics.calls))
+	}
+}
+
 func TestRouterUpdateMiddlewareRunsOnlyOnUpdates(t *testing.T) {
 	var calls int
 	countMiddleware := func(c *gin.Context) {
@@ -135,7 +169,7 @@ func TestRouterUpdateMiddlewareRunsOnlyOnUpdates(t *testing.T) {
 		c.Next()
 	}
 
-	engine, _ := newTestRouter(countMiddleware)
+	engine, _, _ := newTestRouter(countMiddleware)
 
 	doRequest(t, engine, http.MethodPost, "/update/", nil)
 	doRequest(t, engine, http.MethodPost, "/update/gauge/Alloc/12.5", nil)
@@ -182,7 +216,7 @@ func TestRouterRejectsUncleanPath(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			engine, metrics := newTestRouter()
+			engine, metrics, _ := newTestRouter()
 
 			recorder := doRequest(t, engine, http.MethodGet, test.target, nil)
 
@@ -197,7 +231,7 @@ func TestRouterRejectsUncleanPath(t *testing.T) {
 }
 
 func TestRouterDoesNotRedirect(t *testing.T) {
-	engine, _ := newTestRouter()
+	engine, _, _ := newTestRouter()
 
 	recorder := doRequest(t, engine, http.MethodGet, "/value/counter/PollCount/", nil)
 

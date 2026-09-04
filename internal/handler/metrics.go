@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"html"
 	"net/http"
@@ -15,6 +16,8 @@ import (
 )
 
 type MetricsHandler interface {
+	UpdateMetrics(c *gin.Context)
+
 	UpdateMetric(c *gin.Context)
 	UpdateMetricV2(c *gin.Context)
 	GetMetric(c *gin.Context)
@@ -28,6 +31,27 @@ type metricsHandler struct {
 
 func NewMetricsHandler(s service.MetricsService) MetricsHandler {
 	return &metricsHandler{service: s}
+}
+
+func (h *metricsHandler) UpdateMetrics(c *gin.Context) {
+	var metrics []models.Metrics
+
+	if err := c.ShouldBindJSON(&metrics); err != nil {
+		http.Error(c.Writer, "Ошибка при чтении тела запроса", http.StatusBadRequest)
+		return
+	}
+
+	if err := validateMetrics(metrics); err != nil {
+		http.Error(c.Writer, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.service.UpdateMetrics(c.Request.Context(), metrics); err != nil {
+		http.Error(c.Writer, "Не удалось сохранить метрики", http.StatusInternalServerError)
+		return
+	}
+
+	c.Header("Content-Type", "text/plain")
 }
 
 func (h *metricsHandler) UpdateMetricV2(c *gin.Context) {
@@ -50,22 +74,28 @@ func (h *metricsHandler) UpdateMetricV2(c *gin.Context) {
 			return
 		}
 
-		h.service.UpdateCounterMetricValue(service.UpdateCounterMetricValueParams{
+		if err := h.service.UpdateCounterMetricValue(c.Request.Context(), service.UpdateCounterMetricValueParams{
 			Type:  metric.MType,
 			Name:  metric.ID,
 			Value: *metric.Delta,
-		})
+		}); err != nil {
+			http.Error(c.Writer, "Не удалось сохранить метрику", http.StatusInternalServerError)
+			return
+		}
 	case models.Gauge:
 		if metric.Value == nil {
 			http.Error(c.Writer, "Неверные значения полей в теле запроса", http.StatusBadRequest)
 			return
 		}
 
-		h.service.UpdateGaugeMetricValue(service.UpdateGaugeMetricValueParams{
+		if err := h.service.UpdateGaugeMetricValue(c.Request.Context(), service.UpdateGaugeMetricValueParams{
 			Type:  metric.MType,
 			Name:  metric.ID,
 			Value: *metric.Value,
-		})
+		}); err != nil {
+			http.Error(c.Writer, "Не удалось сохранить метрику", http.StatusInternalServerError)
+			return
+		}
 	default:
 		http.Error(c.Writer, "Неизвестный тип метрики", http.StatusBadRequest)
 		return
@@ -92,11 +122,14 @@ func (h *metricsHandler) UpdateMetric(c *gin.Context) {
 			return
 		}
 
-		h.service.UpdateCounterMetricValue(service.UpdateCounterMetricValueParams{
+		if err := h.service.UpdateCounterMetricValue(c.Request.Context(), service.UpdateCounterMetricValueParams{
 			Type:  mType,
 			Name:  name,
 			Value: parsedVal,
-		})
+		}); err != nil {
+			http.Error(c.Writer, "Не удалось сохранить метрику", http.StatusInternalServerError)
+			return
+		}
 	case models.Gauge:
 		parsedVal, err := strconv.ParseFloat(value, 64)
 		if err != nil {
@@ -104,11 +137,14 @@ func (h *metricsHandler) UpdateMetric(c *gin.Context) {
 			return
 		}
 
-		h.service.UpdateGaugeMetricValue(service.UpdateGaugeMetricValueParams{
+		if err := h.service.UpdateGaugeMetricValue(c.Request.Context(), service.UpdateGaugeMetricValueParams{
 			Type:  mType,
 			Name:  name,
 			Value: parsedVal,
-		})
+		}); err != nil {
+			http.Error(c.Writer, "Не удалось сохранить метрику", http.StatusInternalServerError)
+			return
+		}
 	default:
 		http.Error(c.Writer, "Неизвестный тип метрики", http.StatusBadRequest)
 		return
@@ -125,7 +161,12 @@ func (h *metricsHandler) GetMetricV2(c *gin.Context) {
 		return
 	}
 
-	metric, exists := h.service.GetMetric(request.MType, request.ID)
+	metric, exists, err := h.service.GetMetric(c.Request.Context(), request.MType, request.ID)
+	if err != nil {
+		http.Error(c.Writer, "Не удалось прочитать метрику", http.StatusInternalServerError)
+		return
+	}
+
 	if !exists {
 		http.Error(c.Writer, "Неизвестная метрика", http.StatusNotFound)
 		return
@@ -135,7 +176,12 @@ func (h *metricsHandler) GetMetricV2(c *gin.Context) {
 }
 
 func (h *metricsHandler) GetMetric(c *gin.Context) {
-	metric, exists := h.service.GetMetric(c.Param("type"), c.Param("name"))
+	metric, exists, err := h.service.GetMetric(c.Request.Context(), c.Param("type"), c.Param("name"))
+	if err != nil {
+		http.Error(c.Writer, "Не удалось прочитать метрику", http.StatusInternalServerError)
+		return
+	}
+
 	if !exists {
 		http.Error(c.Writer, "Неизвестная метрика", http.StatusNotFound)
 		return
@@ -147,7 +193,11 @@ func (h *metricsHandler) GetMetric(c *gin.Context) {
 }
 
 func (h *metricsHandler) GetMetrics(c *gin.Context) {
-	metrics := h.service.GetMetrics()
+	metrics, err := h.service.GetMetrics(c.Request.Context())
+	if err != nil {
+		http.Error(c.Writer, "Не удалось прочитать метрики", http.StatusInternalServerError)
+		return
+	}
 
 	sort.Slice(metrics, func(i, j int) bool {
 		return metrics[i].ID < metrics[j].ID
@@ -175,4 +225,27 @@ func formatValue(metric models.Metrics) string {
 	}
 
 	return fmt.Sprint(*metric.Value)
+}
+
+func validateMetrics(metrics []models.Metrics) error {
+	for _, metric := range metrics {
+		if metric.ID == "" {
+			return errors.New("пустое имя метрики")
+		}
+
+		switch metric.MType {
+		case models.Counter:
+			if metric.Delta == nil {
+				return fmt.Errorf("не задано значение delta у метрики %q", metric.ID)
+			}
+		case models.Gauge:
+			if metric.Value == nil {
+				return fmt.Errorf("не задано значение value у метрики %q", metric.ID)
+			}
+		default:
+			return fmt.Errorf("неизвестный тип метрики %q", metric.MType)
+		}
+	}
+
+	return nil
 }

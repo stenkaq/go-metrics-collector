@@ -46,7 +46,7 @@ func main() {
 	}, &wg)
 
 	go scheduleFunc(ctx, agentConfig.ReportInterval, func() {
-		agent.SendMetrics()
+		agent.SendMetrics(ctx)
 	}, &wg)
 
 	wg.Wait()

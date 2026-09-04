@@ -39,7 +39,7 @@ func hasToken(header, token string) bool {
 		if strings.EqualFold(strings.TrimSpace(name), token) {
 			return true
 		}
-	} 
+	}
 
 	return false
 }
