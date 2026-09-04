@@ -53,7 +53,7 @@ func (h *dbHandlerStub) Ping(c *gin.Context) {
 func newTestRouter(updateMiddlewares ...gin.HandlerFunc) (*gin.Engine, *metricsHandlerStub, *dbHandlerStub) {
 	metrics := &metricsHandlerStub{}
 	db := &dbHandlerStub{}
-	engine := router.New(router.Handlers{Metrics: metrics, DB: db}, zap.NewNop(), updateMiddlewares...)
+	engine := router.New(router.Handlers{Metrics: metrics, DB: db}, zap.NewNop(), "", updateMiddlewares...)
 
 	return engine, metrics, db
 }

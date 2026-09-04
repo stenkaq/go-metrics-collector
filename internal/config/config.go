@@ -12,12 +12,14 @@ type AgentConfig struct {
 	Address        string
 	ReportInterval time.Duration
 	PollInterval   time.Duration
+	Key            string
 }
 
 type AgentEnvConfig struct {
 	Address        string `env:"ADDRESS"`
 	ReportInterval int    `env:"REPORT_INTERVAL"`
 	PollInterval   int    `env:"POLL_INTERVAL"`
+	Key            string `env:"KEY"`
 }
 
 type ServerEnvConfig struct {
@@ -26,6 +28,7 @@ type ServerEnvConfig struct {
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 	Restore         bool   `env:"RESTORE"`
 	DatabaseDSN     string `env:"DATABASE_DSN"`
+	Key             string `env:"KEY"`
 }
 
 type ServerConfig struct {
@@ -34,6 +37,7 @@ type ServerConfig struct {
 	FileStoragePath string
 	Restore         bool
 	DatabaseDSN     string
+	Key             string
 }
 
 func ParseAgentConfig() AgentConfig {
@@ -42,6 +46,7 @@ func ParseAgentConfig() AgentConfig {
 	flag.StringVar(&cfg.Address, "a", "localhost:8080", "адрес сервера")
 	flag.IntVar(&cfg.ReportInterval, "r", 10, "интервал отправки метрик (сек.)")
 	flag.IntVar(&cfg.PollInterval, "p", 2, "интервал опроса метрик (сек.)")
+	flag.StringVar(&cfg.Key, "k", "", "секретный ключ")
 	flag.Parse()
 
 	if err := env.Parse(&cfg); err != nil {
@@ -52,6 +57,7 @@ func ParseAgentConfig() AgentConfig {
 		Address:        cfg.Address,
 		ReportInterval: time.Duration(cfg.ReportInterval) * time.Second,
 		PollInterval:   time.Duration(cfg.PollInterval) * time.Second,
+		Key:            cfg.Key,
 	}
 }
 
@@ -63,7 +69,7 @@ func ParseServerConfig() ServerConfig {
 	flag.StringVar(&cfg.FileStoragePath, "f", "/tmp/log.json", "путь до файла, куда сохраняются текущие значения")
 	flag.BoolVar(&cfg.Restore, "r", true, "определяет, загружать ли ранее сохранённые значения из указанного файла при старте сервера.")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "строка подключения к БД")
-
+	flag.StringVar(&cfg.Key, "k", "", "секретный ключ")
 	flag.Parse()
 
 	if err := env.Parse(&cfg); err != nil {
@@ -76,5 +82,6 @@ func ParseServerConfig() ServerConfig {
 		StoreInterval:   time.Duration(cfg.StoreInterval) * time.Second,
 		Restore:         cfg.Restore,
 		DatabaseDSN:     cfg.DatabaseDSN,
+		Key:             cfg.Key,
 	}
 }
