@@ -36,7 +36,7 @@ func main() {
 
 	var wg sync.WaitGroup
 
-	agent := app.NewAgent(agentConfig.Address)
+	agent := app.NewAgent(agentConfig)
 
 	log.Println("Агент успешно запущен")
 

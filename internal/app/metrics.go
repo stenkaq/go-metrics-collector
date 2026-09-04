@@ -94,6 +94,7 @@ func NewMetricsApp(ctx context.Context, cfg config.ServerConfig) (*App, error) {
 			DB:      dbHandler,
 		},
 		logger,
+		cfg.Key,
 		updateMiddlewares...,
 	)
 

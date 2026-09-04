@@ -16,7 +16,7 @@ type Handlers struct {
 	DB      handler.DBHandler
 }
 
-func New(handlers Handlers, logger *zap.Logger, updateMiddlewares ...gin.HandlerFunc) *gin.Engine {
+func New(handlers Handlers, logger *zap.Logger, key string, updateMiddlewares ...gin.HandlerFunc) *gin.Engine {
 	router := gin.New()
 
 	router.RedirectTrailingSlash = false
@@ -26,6 +26,7 @@ func New(handlers Handlers, logger *zap.Logger, updateMiddlewares ...gin.Handler
 		middleware.LogRequest(logger),
 		middleware.LogResponse(logger),
 		middleware.GzipRequest(),
+		middleware.HashRequest(key),
 		middleware.GzipResponse(),
 		gin.Recovery(),
 		rejectUncleanPath(),
